@@ -68,6 +68,8 @@ async def seed_clinic(label: str) -> dict[str, Any]:
             "reqev",
             "cfg",
             "blocked",
+            "settings",
+            "refresh",
         )
     }
     e164 = "+5571" + "".join(random.choices("0123456789", k=9))
@@ -81,6 +83,12 @@ async def seed_clinic(label: str) -> dict[str, Any]:
               INSERT INTO clinics (id, name, slug) VALUES ('{c}', 'Clinic {label}', '{slug}');
               INSERT INTO clinic_users (id, clinic_id, email, password_hash, full_name, role)
                 VALUES ('{ids["user"]}', '{c}', '{label}@example.test', 'x', 'User {label}', 'admin');
+              INSERT INTO clinic_settings (clinic_id) VALUES ('{c}');
+              INSERT INTO refresh_tokens (id, clinic_id, user_id, family_id, token_hash, expires_at,
+                  created_ip, user_agent)
+                VALUES ('{ids["refresh"]}', '{c}', '{ids["user"]}', '{ids["refresh"]}',
+                  sha256('seed-refresh-{label}'::bytea), now() + interval '30 days',
+                  '203.0.113.10', 'seed-test');
               INSERT INTO phone_numbers (id, clinic_id, e164) VALUES ('{ids["phone"]}', '{c}', '{e164}');
               INSERT INTO services (id, clinic_id, name, duration_min, price_cents)
                 VALUES ('{ids["service"]}', '{c}', 'Consulta {label}', 30, 10000);

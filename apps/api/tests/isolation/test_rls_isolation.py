@@ -137,9 +137,10 @@ async def test_global_blocks_are_readable_by_tenants_but_not_writable(
 async def test_ops_role_can_only_touch_global_blocks(tenants: dict[str, dict[str, Any]]) -> None:
     ops = await asyncpg.connect(OPS_DSN)
     try:
-        with pytest.raises(asyncpg.PostgresError) as exc:
-            await ops.fetch("SELECT * FROM services")
-        assert exc.value.sqlstate == "42501"
+        for table in ("services", "clinic_settings", "refresh_tokens"):
+            with pytest.raises(asyncpg.PostgresError) as exc:
+                await ops.fetch(f"SELECT * FROM {table}")  # noqa: S608
+            assert exc.value.sqlstate == "42501", f"ops must not read {table}"
         with pytest.raises(asyncpg.PostgresError):
             await ops.execute(
                 "INSERT INTO blocked_numbers (clinic_id, e164, source) VALUES ($1, '+5500000000008', 'manual')",
@@ -147,6 +148,59 @@ async def test_ops_role_can_only_touch_global_blocks(tenants: dict[str, dict[str
             )
     finally:
         await ops.close()
+
+
+async def test_runtime_role_cannot_read_other_tenant_clinics_or_phone_numbers(
+    tenants: dict[str, dict[str, Any]],
+) -> None:
+    a, b = tenants["A"], tenants["B"]
+    async with app_conn(a["clinic"]) as conn:
+        assert (
+            await conn.fetchval("SELECT name FROM clinics WHERE id = $1", a["clinic"]) is not None
+        )
+        assert await conn.fetchval("SELECT count(*) FROM clinics WHERE id = $1", b["clinic"]) == 0
+        assert (
+            await conn.fetchval(
+                "SELECT count(*) FROM phone_numbers WHERE clinic_id = $1", b["clinic"]
+            )
+            == 0
+        )
+
+
+async def test_routing_functions_owner_has_only_column_level_grants(
+    tenants: dict[str, dict[str, Any]],
+) -> None:
+    async with app_conn(tenants["A"]["clinic"]) as conn:
+        assert (
+            await conn.fetchval(
+                "SELECT has_table_privilege('triavoz_definer', 'phone_numbers', 'SELECT')"
+            )
+            is False
+        )
+        assert (
+            await conn.fetchval(
+                "SELECT has_column_privilege('triavoz_definer', 'phone_numbers', 'e164', 'SELECT')"
+            )
+            is True
+        )
+        assert (
+            await conn.fetchval(
+                "SELECT has_column_privilege('triavoz_definer', 'phone_numbers', 'id', 'SELECT')"
+            )
+            is False
+        )
+        assert (
+            await conn.fetchval(
+                "SELECT has_table_privilege('triavoz_definer', 'clinics', 'SELECT')"
+            )
+            is False
+        )
+        assert (
+            await conn.fetchval(
+                "SELECT has_column_privilege('triavoz_definer', 'clinics', 'slug', 'SELECT')"
+            )
+            is True
+        )
 
 
 async def test_tenant_context_does_not_leak_across_pooled_connections(

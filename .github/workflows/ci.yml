@@ -36,8 +36,8 @@ jobs:
         env:
           TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
         run: poetry run alembic upgrade head
-      - run: poetry run ruff check src tests migrations
-      - run: poetry run ruff format --check src tests migrations
+      - run: poetry run ruff check src tests migrations scripts
+      - run: poetry run ruff format --check src tests migrations scripts
       - run: poetry run mypy src
       - name: Tests (incl. tenant isolation — blocks merge)
         env:

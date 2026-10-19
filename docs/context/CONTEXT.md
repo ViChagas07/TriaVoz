@@ -47,8 +47,8 @@ See `docs/specs/03-voice-agent.md`. Tools: `list_services`, `list_available_slot
 See `docs/specs/04-abuse-protection.md`. Gatekeeper BEFORE the agent (rate limit per caller, blocklists, concurrency, daily minute budget, cost circuit-breaker, kill switch), in-call friction (silence/duration/turn limits), minimum-privilege agent, post-call scoring + "mark as prank" feedback loop. Never blocks emergencies.
 
 ## 8. Data model
-Implemented in `apps/api/migrations/sql/0001_initial_schema_rls.sql` (source of truth): `clinics, clinic_users, phone_numbers, services, professionals, professional_services, availability_rules, time_off, calls, call_turns, call_events, appointments, service_requests, request_events, agent_configs, blocked_numbers, audit_log`.
-`calls` stores `usage` (jsonb), `latency_ms` (jsonb per stage p50/p95) and `cost_cents`.
+Implemented in `apps/api/migrations/sql/0001_initial_schema_rls.sql` and `0002_refresh_tokens_clinic_settings.sql` (source of truth): `clinics, clinic_users, phone_numbers, services, professionals, professional_services, availability_rules, time_off, calls, call_turns, call_events, appointments, service_requests, request_events, agent_configs, clinic_settings, refresh_tokens, blocked_numbers, audit_log`.
+`calls` stores `usage` (jsonb), `latency_ms` (jsonb per stage p50/p95) and `cost_cents`. `refresh_tokens` stores only SHA-256 hashes, a `family_id` for reuse detection, and a composite `(clinic_id, user_id)` FK. `clinic_settings` holds daily minute/cost budgets, concurrency/duration caps, kill switch and transcript retention days.
 
 ## 9. API surface
 - **Internal (HMAC):** `/internal/agent/calls/{start,turns,end}`, `/internal/agent/tools/{list-services,list-slots,book,my-appointments,cancel,reschedule}` — implemented.

@@ -46,6 +46,15 @@ API tests (need Postgres; see `apps/api/tests/conftest.py` for the DSN env vars)
 cd apps/api && poetry install && poetry run pytest
 ```
 
+Demo data (3 fictional clinics, including staff users with password `Demo!TriaVoz2026` — **DEV
+ONLY**). The seed is idempotent and uses the owner DSN, never the runtime role:
+```bash
+export TRIAVOZ_DATABASE_URL_OWNER=postgresql+psycopg://triavoz_owner:owner-dev@localhost:5432/triavoz
+make seed
+```
+On PowerShell, set the same variable with `$env:TRIAVOZ_DATABASE_URL_OWNER="..."` before `make seed`.
+Do not reuse these passwords or the demo numbers outside local development.
+
 ## Status
 See [`docs/agent/PROGRESS.md`](docs/agent/PROGRESS.md) — it states exactly what is verified and what is not.
 
