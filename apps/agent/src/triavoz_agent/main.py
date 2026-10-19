@@ -38,7 +38,13 @@ async def entrypoint(ctx: JobContext) -> None:
         return
 
     api = TriaVozApi(cfg.api_url, cfg.hmac_secret)
-    call_id = await api.start_call(clinic_id, channel, ctx.room.name, meta.get("caller_number"))
+    # POST /api/v1/voice/session creates the call before the room; reuse that id. The fallback
+    # keeps direct LiveKit dev rooms working (no API-created session).
+    call_id = (
+        str(meta["call_id"])
+        if meta.get("call_id")
+        else await api.start_call(clinic_id, channel, ctx.room.name, meta.get("caller_number"))
+    )
     call = CallContext(api, clinic_id, call_id)
     tz = meta.get("timezone", "America/Bahia")
     agent_cfg: dict[str, Any] = meta.get("agent_config") or {}
