@@ -619,6 +619,17 @@ async def test_internal_idempotency_returns_same_book_and_request(
     assert first.status_code == 200 and second.status_code == 200
     assert first.json()["appointment_id"] == second.json()["appointment_id"]
 
+    cancel_body = {**ctx, "appointment_id": first.json()["appointment_id"]}
+    cancel_key = str(uuid.uuid4())
+    cancel1 = await _internal(
+        client, "/internal/agent/tools/cancel", cancel_body, {"Idempotency-Key": cancel_key}
+    )
+    cancel2 = await _internal(
+        client, "/internal/agent/tools/cancel", cancel_body, {"Idempotency-Key": cancel_key}
+    )
+    assert cancel1.status_code == 200 and cancel2.status_code == 200
+    assert cancel1.json()["status"] == "canceled"
+
     request_body = {
         **ctx,
         "type": "message",

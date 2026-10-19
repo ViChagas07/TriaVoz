@@ -10,7 +10,7 @@
 |---|---|---|
 | F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub Actions runs #1/#2 green (api/agent/web/secrets) |
 | F01 Database + RLS + isolation tests | P02 | [x] migration 0001+0002, roles, forced RLS, routing functions, double-booking constraint, `refresh_tokens` + `clinic_settings`, isolation/role suite (mutation-tested), idempotent demo seed, CI green |
-| F02 Backend core | P03 | [x] auth cookies/rotation/reuse/lockout, RBAC, requests+calls+agenda+agent-config+dashboard, SSE, team, blocked numbers, voice session, internal service-request + idempotency, CI green |
+| F02 Backend core | P03 | [x] auth cookies/rotation/reuse/lockout, RBAC, requests+calls+agenda+agent-config+dashboard, SSE, team, blocked numbers, voice session, internal service-request + idempotent book/cancel/reschedule, CI green |
 | F03 Voice agent | P04 | [~] LiveKit worker skeleton, tools, prompt, metrics, cost estimate · [ ] real end-to-end call, handoff, barge-in tuning, latency measurements |
 | F04 Anti-abuse & cost | P05 | [ ] |
 | F05 Frontend | P06 | [~] Next.js base, design tokens, i18n, route placeholders, StatusBadge · [ ] real pages, demo voice UI |

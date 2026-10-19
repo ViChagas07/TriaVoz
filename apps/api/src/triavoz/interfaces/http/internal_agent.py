@@ -268,7 +268,25 @@ async def my_appointments(body: Ctx) -> list[dict[str, str]]:
 
 
 @router.post("/tools/cancel")
-async def cancel(body: AppointmentIn) -> dict[str, str]:
+async def cancel(
+    body: AppointmentIn,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    store: IdempotencyStore = Depends(get_idempotency_store),
+    events: EventPublisher = Depends(get_events_dep),
+) -> dict[str, str]:
+    key = _idem_key(
+        clinic_id=body.clinic_id,
+        call_id=body.call_id,
+        endpoint="cancel",
+        header=idempotency_key,
+        body=body.model_dump(mode="json"),
+    )
+    if key is not None:
+        cached = await store.get(key[0])
+        if cached is not None:
+            if cached.get("request_hash") != key[1]:
+                raise HTTPException(status_code=409, detail="idempotency_conflict")
+            return dict(cached["response"])
     try:
         async with tenant_session(body.clinic_id) as session:
             phone = await PgCallRepository(session).caller_number(body.call_id)
@@ -277,11 +295,37 @@ async def cancel(body: AppointmentIn) -> dict[str, str]:
             )
     except DomainError as exc:
         raise _http(exc) from exc
-    return {"status": "canceled"}
+    result = {"status": "canceled"}
+    if key is not None:
+        await store.set(key[0], {"request_hash": key[1], "response": result})
+    await events.publish(
+        body.clinic_id,
+        "appointment.canceled",
+        {"appointment_id": str(body.appointment_id), "call_id": str(body.call_id)},
+    )
+    return result
 
 
 @router.post("/tools/reschedule")
-async def reschedule(body: RescheduleIn) -> dict[str, str]:
+async def reschedule(
+    body: RescheduleIn,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    store: IdempotencyStore = Depends(get_idempotency_store),
+    events: EventPublisher = Depends(get_events_dep),
+) -> dict[str, str]:
+    key = _idem_key(
+        clinic_id=body.clinic_id,
+        call_id=body.call_id,
+        endpoint="reschedule",
+        header=idempotency_key,
+        body=body.model_dump(mode="json"),
+    )
+    if key is not None:
+        cached = await store.get(key[0])
+        if cached is not None:
+            if cached.get("request_hash") != key[1]:
+                raise HTTPException(status_code=409, detail="idempotency_conflict")
+            return dict(cached["response"])
     new_start = _aware(body.new_starts_at)
     try:
         async with tenant_session(body.clinic_id) as session:
@@ -295,7 +339,15 @@ async def reschedule(body: RescheduleIn) -> dict[str, str]:
             )
     except DomainError as exc:
         raise _http(exc) from exc
-    return {"status": "rescheduled"}
+    result = {"status": "rescheduled"}
+    if key is not None:
+        await store.set(key[0], {"request_hash": key[1], "response": result})
+    await events.publish(
+        body.clinic_id,
+        "appointment.moved",
+        {"appointment_id": str(body.appointment_id), "call_id": str(body.call_id)},
+    )
+    return result
 
 
 @router.post("/calls/turns")
