@@ -10,6 +10,9 @@ from triavoz import __version__
 from triavoz.config import get_settings
 from triavoz.infrastructure.db.session import dispose_engine
 from triavoz.interfaces.http import health, internal_agent
+from triavoz.interfaces.http.api_v1.router import router as api_v1_router
+from triavoz.interfaces.http.errors import register_exception_handlers
+from triavoz.interfaces.http.middleware import register_request_middleware
 
 
 @asynccontextmanager
@@ -34,12 +37,14 @@ def create_app() -> FastAPI:
         allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
-        allow_headers=["Authorization", "Content-Type"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-Request-ID"],
+        expose_headers=["X-Request-ID"],
     )
+    register_request_middleware(app)
+    register_exception_handlers(app)
     app.include_router(health.router)
     app.include_router(internal_agent.router)
-    # TODO(P03): /api/v1 routers (auth, requests, calls, agent-config, dashboard, SSE,
-    # team, blocked-numbers)
+    app.include_router(api_v1_router)
     return app
 
 

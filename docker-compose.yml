@@ -55,6 +55,12 @@ services:
       TRIAVOZ_JWT_SECRET: ${TRIAVOZ_JWT_SECRET:-dev-only-jwt-secret-change-me-32-bytes-min}
       TRIAVOZ_INTERNAL_HMAC_SECRET: ${TRIAVOZ_INTERNAL_HMAC_SECRET:-dev-only-hmac-secret-change-me-32-bytes}
       TRIAVOZ_CORS_ORIGINS: '["http://localhost:3000"]'
+      TRIAVOZ_COOKIE_SECURE: ${TRIAVOZ_COOKIE_SECURE:-false}
+      TRIAVOZ_DEMO_CLINIC_SLUG: ${TRIAVOZ_DEMO_CLINIC_SLUG:-clinica-horizonte}
+      TRIAVOZ_LIVEKIT_HTTP_URL: http://livekit:7880
+      TRIAVOZ_LIVEKIT_PUBLIC_URL: ${TRIAVOZ_LIVEKIT_PUBLIC_URL:-ws://localhost:7880}
+      TRIAVOZ_LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-devkey}
+      TRIAVOZ_LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:-secret}
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }

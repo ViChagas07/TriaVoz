@@ -70,3 +70,9 @@ class SchedulingRepository(Protocol):
     async def move(self, appointment_id: UUID, starts_at: datetime, ends_at: datetime) -> None:
         """Raises SlotTaken on overlap."""
         ...
+
+    async def get_appointment_for_staff(
+        self, appointment_id: UUID
+    ) -> tuple[UUID, UUID, UUID, datetime, str] | None:
+        """(id, professional_id, service_id, starts_at, status) for a tenant appointment."""
+        ...

@@ -162,6 +162,54 @@ class CancelAppointment:
         await self._repo.cancel(appointment_id, now)
 
 
+class MoveStaffAppointment:
+    """Staff reschedule: same slot validation, but no caller-phone ownership check."""
+
+    def __init__(self, repo: SchedulingRepository) -> None:
+        self._repo = repo
+
+    async def execute(
+        self,
+        *,
+        clinic_id: UUID,
+        appointment_id: UUID,
+        new_starts_at: datetime,
+        now: datetime,
+    ) -> None:
+        owned = await self._repo.get_appointment_for_staff(appointment_id)
+        if owned is None or owned[4] != "booked":
+            raise NotFound("appointment")
+        _, professional_id, service_id, _old, _status = owned
+        service = await self._repo.get_service(service_id)
+        if service is None:
+            raise NotFound("service")
+        tz = ZoneInfo(await self._repo.clinic_timezone(clinic_id))
+        offered = await _slots_for(
+            self._repo,
+            clinic_id=clinic_id,
+            service=service,
+            day=new_starts_at.astimezone(tz).date(),
+            now=now,
+            professional_id=professional_id,
+        )
+        if not any(s.starts_at == new_starts_at for s in offered):
+            raise SlotUnavailable("not an available slot")
+        await self._repo.move(
+            appointment_id, new_starts_at, new_starts_at + timedelta(minutes=service.duration_min)
+        )
+
+
+class CancelStaffAppointment:
+    def __init__(self, repo: SchedulingRepository) -> None:
+        self._repo = repo
+
+    async def execute(self, *, appointment_id: UUID, now: datetime) -> None:
+        owned = await self._repo.get_appointment_for_staff(appointment_id)
+        if owned is None or owned[4] != "booked":
+            raise NotFound("appointment")
+        await self._repo.cancel(appointment_id, now)
+
+
 class RescheduleAppointment:
     def __init__(self, repo: SchedulingRepository) -> None:
         self._repo = repo

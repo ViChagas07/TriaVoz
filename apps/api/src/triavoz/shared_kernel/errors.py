@@ -23,3 +23,25 @@ class SlotUnavailable(DomainError):
 
 class InvalidRequest(DomainError):
     code = "invalid_request"
+
+
+class AuthenticationError(DomainError):
+    """Use one generic code for bad credentials; do not reveal which factor failed."""
+
+    code = "invalid_credentials"
+
+
+class TooManyAttempts(DomainError):
+    code = "too_many_attempts"
+
+
+class Forbidden(DomainError):
+    code = "forbidden"
+
+
+class Conflict(DomainError):
+    code = "conflict"
+
+
+class ServiceUnavailable(DomainError):
+    code = "service_unavailable"

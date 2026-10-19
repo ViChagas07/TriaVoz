@@ -47,13 +47,22 @@ cd apps/api && poetry install && poetry run pytest
 ```
 
 Demo data (3 fictional clinics, including staff users with password `Demo!TriaVoz2026` — **DEV
-ONLY**). The seed is idempotent and uses the owner DSN, never the runtime role:
+ONLY**). Demo logins: `admin@horizonte.demo` / `recepcao@horizonte.demo` (also `vida-leve` and
+`sol-nascente`), clinic codes `clinica-horizonte`, `clinica-vida-leve`, `clinica-sol-nascente`.
+The seed is idempotent and uses the owner DSN, never the runtime role:
 ```bash
 export TRIAVOZ_DATABASE_URL_OWNER=postgresql+psycopg://triavoz_owner:owner-dev@localhost:5432/triavoz
 make seed
 ```
 On PowerShell, set the same variable with `$env:TRIAVOZ_DATABASE_URL_OWNER="..."` before `make seed`.
 Do not reuse these passwords or the demo numbers outside local development.
+
+Staff API: login via `POST /api/v1/auth/login` with `{clinic_code, email, password}`; the access JWT
+is returned and set as an httpOnly cookie. The full contract is at `/docs` (disabled in production)
+or `/openapi.json`. `POST /api/v1/voice/session` is public, restricted to `TRIAVOZ_DEMO_CLINIC_SLUG`,
+and returns a short-lived LiveKit token; the room metadata carries `clinic_id`, `call_id`, caller,
+timezone and the published agent config. Post-call summaries are wired behind a port but return 503
+until a reviewed provider is configured (P07).
 
 ## Status
 See [`docs/agent/PROGRESS.md`](docs/agent/PROGRESS.md) — it states exactly what is verified and what is not.

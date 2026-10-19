@@ -188,6 +188,20 @@ class PgSchedulingRepository:
             {"id": appointment_id, "now": now},
         )
 
+    async def get_appointment_for_staff(
+        self, appointment_id: UUID
+    ) -> tuple[UUID, UUID, UUID, datetime, str] | None:
+        r = (
+            await self._s.execute(
+                text(
+                    "SELECT id, professional_id, service_id, starts_at, status "
+                    "FROM appointments WHERE id = :id"
+                ),
+                {"id": appointment_id},
+            )
+        ).first()
+        return (r.id, r.professional_id, r.service_id, r.starts_at, r.status) if r else None
+
     async def move(self, appointment_id: UUID, starts_at: datetime, ends_at: datetime) -> None:
         try:
             async with self._s.begin_nested():
