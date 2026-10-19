@@ -67,12 +67,27 @@ services:
 
   agent:
     build: ./apps/agent
-    env_file: [.env]          # LIVEKIT_*, DEEPGRAM_API_KEY, ELEVEN_API_KEY, ANTHROPIC_API_KEY, TRIAVOZ_*
+    # Least privilege: pass only voice/provider settings. DB credentials stay in the API/migrate
+    # services and are never injected into the worker.
     environment:
       LIVEKIT_URL: ws://livekit:7880
       LIVEKIT_API_KEY: devkey
       LIVEKIT_API_SECRET: secret
       TRIAVOZ_API_URL: http://api:8000
+      TRIAVOZ_INTERNAL_HMAC_SECRET: ${TRIAVOZ_INTERNAL_HMAC_SECRET}
+      TRIAVOZ_LLM_MODEL: ${TRIAVOZ_LLM_MODEL:-}
+      TRIAVOZ_STT_MODEL: ${TRIAVOZ_STT_MODEL:-nova-3}
+      TRIAVOZ_STT_LANGUAGE: ${TRIAVOZ_STT_LANGUAGE:-pt-BR}
+      TRIAVOZ_TTS_VOICE_ID: ${TRIAVOZ_TTS_VOICE_ID:-}
+      TRIAVOZ_TTS_MODEL: ${TRIAVOZ_TTS_MODEL:-}
+      TRIAVOZ_MAX_CALL_SECONDS: ${TRIAVOZ_MAX_CALL_SECONDS:-300}
+      TRIAVOZ_PRICE_STT_PER_MIN_CENTS: ${TRIAVOZ_PRICE_STT_PER_MIN_CENTS:-0}
+      TRIAVOZ_PRICE_LLM_IN_PER_M_CENTS: ${TRIAVOZ_PRICE_LLM_IN_PER_M_CENTS:-0}
+      TRIAVOZ_PRICE_LLM_OUT_PER_M_CENTS: ${TRIAVOZ_PRICE_LLM_OUT_PER_M_CENTS:-0}
+      TRIAVOZ_PRICE_TTS_PER_K_CHARS_CENTS: ${TRIAVOZ_PRICE_TTS_PER_K_CHARS_CENTS:-0}
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      ELEVEN_API_KEY: ${ELEVEN_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on: [api, livekit]
 
   web:
