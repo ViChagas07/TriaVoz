@@ -9,7 +9,7 @@
 | Phase | Prompt | Status |
 |---|---|---|
 | F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub Actions runs #1/#2 green (api/agent/web/secrets) |
-| F01 Database + RLS + isolation tests | P02 | [x] migration 0001+0002, roles, forced RLS, routing functions, double-booking constraint, `refresh_tokens` + `clinic_settings`, isolation/role suite (mutation-tested), idempotent demo seed |
+| F01 Database + RLS + isolation tests | P02 | [x] migration 0001+0002, roles, forced RLS, routing functions, double-booking constraint, `refresh_tokens` + `clinic_settings`, isolation/role suite (mutation-tested), idempotent demo seed, CI green |
 | F02 Backend core | P03 | [~] settings, tenant session, security primitives, scheduling domain/use cases/repo, internal agent API (HMAC) · [ ] auth endpoints, requests, calls read API, agent-config, dashboard, SSE, team, blocked numbers, voice session endpoint |
 | F03 Voice agent | P04 | [~] LiveKit worker skeleton, tools, prompt, metrics, cost estimate · [ ] real end-to-end call, handoff, barge-in tuning, latency measurements |
 | F04 Anti-abuse & cost | P05 | [ ] |
@@ -30,8 +30,8 @@
 - `docker compose up --build` validated end-to-end from a removed `pgdata` volume: postgres/redis healthy, `migrate` exits 0, API `/health` returns `{"status":"ok"}`, web returns HTTP 200, agent registers with the LiveKit dev server. Host ports were remapped locally (55433/56379/58000/3300) because another local stack owns 5432/6379/8000; defaults remain unchanged for clean machines.
 - Lock files committed: `apps/api/poetry.lock`, `apps/agent/poetry.lock`, `apps/web/package-lock.json`. Dockerfiles use Poetry 2.4.1 (lock-version 2.1) and ignore host `node_modules`/env files.
 - Graphify graph built and refreshed after P02 (603 nodes, 1262 edges, 46 communities); agent integration installed (`AGENTS.md`, `.kilo/plugins/graphify.js`). The SQL migrations are not indexed because `tree_sitter_sql` is not installed.
-- GitHub Actions runs #1/#2 (commits `cc8a67f`, `db1718f`, 2026-10-19) passed: `api`, `agent`, `web` and `secrets`. `act`/`gh` are not installed locally; the remote runs are the CI evidence.
-- NOT validated: browser voice UI, any real provider call.
+- GitHub Actions runs #1/#2 (P01 commits `cc8a67f`, `db1718f`) and run #4 (P02 commit `7f09264`, run `39266266940`) passed: `api`, `agent`, `web` and `secrets`. `act`/`gh` are not installed locally; the remote runs are the CI evidence.
+- NOT validated: browser voice UI, any real provider call, and the P03 refresh-token rotation flow (schema is ready; use case/API not built yet).
 
 ## Open decisions / proposals
 - Host ports in `docker-compose.yml` are env-overridable (`POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `API_HOST_PORT`, `WEB_HOST_PORT`, `LIVEKIT_*_PORT`) with the original defaults. Needed to run alongside other local stacks without stopping them.
@@ -44,4 +44,4 @@
 ## Session log
 - Scaffolding session: created repo base, prompts, docs.
 - 2026-10-19 P01: installed Poetry/npm deps and lock files; fixed Dockerfile Poetry pin + added `.dockerignore`; parameterized host ports; validated full compose stack from a clean volume (`/health` 200, web 200, agent registered); verified API on Python 3.11 (33 tests) and agent (5 tests); rebuilt Graphify graph and installed the Kilo integration; pinned Poetry 2.4.1 in CI. Pushed `cc8a67f`; GitHub Actions run #1 green (api, agent, web, secrets).
-- 2026-10-19 P02: re-verified isolation and mutation checks; added migration 0002 (`refresh_tokens`, `clinic_settings`, two evidence-backed indexes) without touching 0001; added idempotent 3-clinic demo seed; verified empty-DB and 0001→0002 upgrades; added runtime/definer role tests; removed DB credentials from the worker container. 40 API tests green; seed run twice unchanged.
+- 2026-10-19 P02: re-verified isolation and mutation checks; added migration 0002 (`refresh_tokens`, `clinic_settings`, two evidence-backed indexes) without touching 0001; added idempotent 3-clinic demo seed; verified empty-DB and 0001→0002 upgrades; added runtime/definer role tests; removed DB credentials from the worker container. 40 API tests green; seed run twice unchanged. Pushed `7f09264`; GitHub Actions run #4 green (api, agent, web, secrets).
