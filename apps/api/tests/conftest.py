@@ -87,7 +87,7 @@ async def seed_clinic(label: str) -> dict[str, Any]:
               INSERT INTO refresh_tokens (id, clinic_id, user_id, family_id, token_hash, expires_at,
                   created_ip, user_agent)
                 VALUES ('{ids["refresh"]}', '{c}', '{ids["user"]}', '{ids["refresh"]}',
-                  sha256('seed-refresh-{label}'::bytea), now() + interval '30 days',
+                  sha256('{ids["refresh"]}'::bytea), now() + interval '30 days',
                   '203.0.113.10', 'seed-test');
               INSERT INTO phone_numbers (id, clinic_id, e164) VALUES ('{ids["phone"]}', '{c}', '{e164}');
               INSERT INTO services (id, clinic_id, name, duration_min, price_cents)
