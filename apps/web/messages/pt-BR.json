@@ -1,0 +1,37 @@
+{
+  "brand": { "name": "TriaVoz", "tagline": "Agente de voz com IA para clínicas" },
+  "nav": {
+    "dashboard": "Painel",
+    "requests": "Solicitações",
+    "agenda": "Agenda",
+    "history": "Histórico",
+    "calls": "Chamadas",
+    "agent": "Agente",
+    "team": "Equipe",
+    "settings": "Configurações",
+    "demo": "Demonstração",
+    "login": "Entrar"
+  },
+  "status": {
+    "pending": "Pendente",
+    "in_progress": "Em andamento",
+    "done": "Concluído",
+    "cancelled": "Cancelado",
+    "spam": "Trote",
+    "urgent": "Urgente"
+  },
+  "landing": {
+    "title": "A recepção que atende, entende e agenda por voz.",
+    "subtitle": "O TriaVoz atende as ligações da clínica, marca, remarca e cancela consultas, registra tudo e passa para uma pessoa quando você quiser.",
+    "cta": "Experimentar a demonstração"
+  },
+  "demo": {
+    "title": "Fale com o agente",
+    "start": "Começar conversa",
+    "stop": "Encerrar",
+    "disclaimer": "Demonstração com dados fictícios. A conversa pode ser transcrita."
+  },
+  "login": { "title": "Entrar", "clinic": "Código da clínica", "email": "E-mail", "password": "Senha", "submit": "Entrar" },
+  "placeholder": { "todo": "Em construção — veja docs/agent/PROGRESS.md" },
+  "a11y": { "skip": "Pular para o conteúdo", "language": "Idioma" }
+}

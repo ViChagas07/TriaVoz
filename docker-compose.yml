@@ -1,0 +1,92 @@
+# Local development stack. Dev credentials only — never reuse them anywhere else.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres-dev}
+      POSTGRES_DB: triavoz
+      TRIAVOZ_OWNER_PASSWORD: ${TRIAVOZ_OWNER_PASSWORD:-owner-dev}
+      TRIAVOZ_APP_PASSWORD: ${TRIAVOZ_APP_PASSWORD:-app-dev}
+      TRIAVOZ_OPS_PASSWORD: ${TRIAVOZ_OPS_PASSWORD:-ops-dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro   # creates roles + extensions (first start only)
+    ports: ["${POSTGRES_HOST_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d triavoz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["${REDIS_HOST_PORT:-6379}:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  livekit:
+    # TODO(verify-docs): confirm flags/ports for the current livekit-server release. --dev uses
+    # the well-known dev key pair (devkey / secret): LOCAL ONLY.
+    image: livekit/livekit-server:latest
+    command: ["--dev", "--bind", "0.0.0.0"]
+    ports:
+      - "${LIVEKIT_WS_PORT:-7880}:7880"
+      - "${LIVEKIT_TCP_PORT:-7881}:7881"
+      - "${LIVEKIT_UDP_PORT:-7882}:7882/udp"
+
+  migrate:
+    build: ./apps/api
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:${TRIAVOZ_OWNER_PASSWORD:-owner-dev}@postgres:5432/triavoz
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: ./apps/api
+    environment:
+      TRIAVOZ_ENVIRONMENT: development
+      TRIAVOZ_DATABASE_URL_APP: postgresql+asyncpg://triavoz_app:${TRIAVOZ_APP_PASSWORD:-app-dev}@postgres:5432/triavoz
+      TRIAVOZ_REDIS_URL: redis://redis:6379/0
+      TRIAVOZ_JWT_SECRET: ${TRIAVOZ_JWT_SECRET:-dev-only-jwt-secret-change-me-32-bytes-min}
+      TRIAVOZ_INTERNAL_HMAC_SECRET: ${TRIAVOZ_INTERNAL_HMAC_SECRET:-dev-only-hmac-secret-change-me-32-bytes}
+      TRIAVOZ_CORS_ORIGINS: '["http://localhost:3000"]'
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    ports: ["${API_HOST_PORT:-8000}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  agent:
+    build: ./apps/agent
+    env_file: [.env]          # LIVEKIT_*, DEEPGRAM_API_KEY, ELEVEN_API_KEY, ANTHROPIC_API_KEY, TRIAVOZ_*
+    environment:
+      LIVEKIT_URL: ws://livekit:7880
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      TRIAVOZ_API_URL: http://api:8000
+    depends_on: [api, livekit]
+
+  web:
+    build:
+      context: ./apps/web
+      args: { API_ORIGIN: http://api:8000 }
+    ports: ["${WEB_HOST_PORT:-3000}:3000"]
+    depends_on:
+      api: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+volumes:
+  pgdata:

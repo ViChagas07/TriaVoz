@@ -1,0 +1,37 @@
+{
+  "brand": { "name": "TriaVoz", "tagline": "AI voice agent for clinics" },
+  "nav": {
+    "dashboard": "Dashboard",
+    "requests": "Requests",
+    "agenda": "Agenda",
+    "history": "History",
+    "calls": "Calls",
+    "agent": "Agent",
+    "team": "Team",
+    "settings": "Settings",
+    "demo": "Demo",
+    "login": "Sign in"
+  },
+  "status": {
+    "pending": "Pending",
+    "in_progress": "In progress",
+    "done": "Done",
+    "cancelled": "Cancelled",
+    "spam": "Prank call",
+    "urgent": "Urgent"
+  },
+  "landing": {
+    "title": "The front desk that answers, understands and books by voice.",
+    "subtitle": "TriaVoz answers your clinic's calls, books, reschedules and cancels appointments, logs everything and hands over to a human whenever you want.",
+    "cta": "Try the demo"
+  },
+  "demo": {
+    "title": "Talk to the agent",
+    "start": "Start conversation",
+    "stop": "End",
+    "disclaimer": "Demo with fictional data. The conversation may be transcribed."
+  },
+  "login": { "title": "Sign in", "clinic": "Clinic code", "email": "Email", "password": "Password", "submit": "Sign in" },
+  "placeholder": { "todo": "Under construction — see docs/agent/PROGRESS.md" },
+  "a11y": { "skip": "Skip to content", "language": "Language" }
+}

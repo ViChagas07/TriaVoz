@@ -1,0 +1,26 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+dist/
+build/
+.DS_Store
+# Graphify output can be large; graph.json + GRAPH_REPORT.md are committed, everything else is local
+graphify-out/cache/
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_labels.json
+graphify-out/.graphify_labels.json.sig
+graphify-out/.graphify_root
+graphify-out/.graphify_semantic_marker
+graphify-out/manifest.json
+graphify-out/20*/
+graphify-out/*.html

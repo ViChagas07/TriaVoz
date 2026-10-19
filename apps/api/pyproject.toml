@@ -1,0 +1,59 @@
+[tool.poetry]
+name = "triavoz-api"
+version = "0.1.0"
+description = "TriaVoz API — multi-tenant clinic scheduling + voice agent backend"
+authors = ["Alisson Davi Gonzaga Chagas"]
+readme = "README.md"
+packages = [{ include = "triavoz", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+fastapi = ">=0.115"
+uvicorn = { version = ">=0.30", extras = ["standard"] }
+pydantic = ">=2.7"
+pydantic-settings = ">=2.3"
+sqlalchemy = { version = ">=2.0", extras = ["asyncio"] }
+asyncpg = ">=0.29"
+alembic = ">=1.13"
+psycopg = { version = ">=3.2", extras = ["binary"] }   # sync driver, used ONLY by Alembic
+redis = ">=5.0"
+argon2-cffi = ">=23.1"
+pyjwt = ">=2.8"
+structlog = ">=24.1"
+httpx = ">=0.27"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-asyncio = ">=0.23"
+ruff = ">=0.5"
+mypy = ">=1.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = ["db: needs the PostgreSQL test database (see tests/conftest.py)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM"]
+ignore = ["S101"]        # asserts are fine in tests
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S311", "S608", "E501"]   # long SQL literals are fine in tests
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+
+[build-system]
+requires = ["poetry-core>=1.9"]
+build-backend = "poetry.core.masonry.api"

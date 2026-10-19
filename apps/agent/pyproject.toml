@@ -1,0 +1,50 @@
+[tool.poetry]
+name = "triavoz-agent"
+version = "0.1.0"
+description = "TriaVoz voice worker — LiveKit Agents pipeline (STT → LLM tool calling → TTS)"
+authors = ["Alisson Davi Gonzaga Chagas"]
+readme = "README.md"
+packages = [{ include = "triavoz_agent", from = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+livekit-agents = ">=1.8"
+livekit-plugins-deepgram = ">=1.8"
+livekit-plugins-elevenlabs = ">=1.8"
+livekit-plugins-anthropic = ">=1.8"
+livekit-plugins-silero = ">=1.8"
+httpx = ">=0.27"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-asyncio = ">=0.23"
+ruff = ">=0.5"
+mypy = ">=1.10"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC", "SIM"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106"]
+"src/triavoz_agent/prompts.py" = ["E501"]   # prompt prose, kept readable
+"src/triavoz_agent/agent.py" = ["E501"]     # tool docstrings are read by the LLM
+"src/triavoz_agent/api_client.py" = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[build-system]
+requires = ["poetry-core>=1.9"]
+build-backend = "poetry.core.masonry.api"
