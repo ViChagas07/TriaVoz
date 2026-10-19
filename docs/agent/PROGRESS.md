@@ -8,7 +8,7 @@
 ## Phase board
 | Phase | Prompt | Status |
 |---|---|---|
-| F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub Actions run #1 green (api/agent/web/secrets) |
+| F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub Actions runs #1/#2 green (api/agent/web/secrets) |
 | F01 Database + RLS + isolation tests | P02 | [x] migration, roles, RLS, routing functions, double-booking constraint, isolation suite (mutation-tested) · [ ] demo seed script |
 | F02 Backend core | P03 | [~] settings, tenant session, security primitives, scheduling domain/use cases/repo, internal agent API (HMAC) · [ ] auth endpoints, requests, calls read API, agent-config, dashboard, SSE, team, blocked numbers, voice session endpoint |
 | F03 Voice agent | P04 | [~] LiveKit worker skeleton, tools, prompt, metrics, cost estimate · [ ] real end-to-end call, handoff, barge-in tuning, latency measurements |
@@ -26,7 +26,7 @@
 - `docker compose up --build` validated end-to-end from a removed `pgdata` volume: postgres/redis healthy, `migrate` exits 0, API `/health` returns `{"status":"ok"}`, web returns HTTP 200, agent registers with the LiveKit dev server. Host ports were remapped locally (55433/56379/58000/3300) because another local stack owns 5432/6379/8000; defaults remain unchanged for clean machines.
 - Lock files committed: `apps/api/poetry.lock`, `apps/agent/poetry.lock`, `apps/web/package-lock.json`. Dockerfiles use Poetry 2.4.1 (lock-version 2.1) and ignore host `node_modules`/env files.
 - Graphify graph built (560 nodes, 1156 edges, 48 communities) and agent integration installed (`AGENTS.md`, `.kilo/plugins/graphify.js`). The SQL migration is not indexed because `tree_sitter_sql` is not installed.
-- GitHub Actions run #1 (commit `cc8a67f`, 2026-10-19) passed: `api`, `agent`, `web` and `secrets`. `act`/`gh` are not installed locally; the remote run is the CI evidence.
+- GitHub Actions runs #1/#2 (commits `cc8a67f`, `db1718f`, 2026-10-19) passed: `api`, `agent`, `web` and `secrets`. `act`/`gh` are not installed locally; the remote runs are the CI evidence.
 - NOT validated: browser voice UI, any real provider call.
 
 ## Open decisions / proposals
