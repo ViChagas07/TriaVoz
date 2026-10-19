@@ -8,7 +8,7 @@
 ## Phase board
 | Phase | Prompt | Status |
 |---|---|---|
-| F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub CI reviewed, not executed locally (`act`/`gh` unavailable) |
+| F00 Bootstrap & context | P01 | [x] deps/lint/tests/build pass; Docker stack validated from a clean volume; lock files + Graphify integration added; GitHub Actions run #1 green (api/agent/web/secrets) |
 | F01 Database + RLS + isolation tests | P02 | [x] migration, roles, RLS, routing functions, double-booking constraint, isolation suite (mutation-tested) · [ ] demo seed script |
 | F02 Backend core | P03 | [~] settings, tenant session, security primitives, scheduling domain/use cases/repo, internal agent API (HMAC) · [ ] auth endpoints, requests, calls read API, agent-config, dashboard, SSE, team, blocked numbers, voice session endpoint |
 | F03 Voice agent | P04 | [~] LiveKit worker skeleton, tools, prompt, metrics, cost estimate · [ ] real end-to-end call, handoff, barge-in tuning, latency measurements |
@@ -26,7 +26,8 @@
 - `docker compose up --build` validated end-to-end from a removed `pgdata` volume: postgres/redis healthy, `migrate` exits 0, API `/health` returns `{"status":"ok"}`, web returns HTTP 200, agent registers with the LiveKit dev server. Host ports were remapped locally (55433/56379/58000/3300) because another local stack owns 5432/6379/8000; defaults remain unchanged for clean machines.
 - Lock files committed: `apps/api/poetry.lock`, `apps/agent/poetry.lock`, `apps/web/package-lock.json`. Dockerfiles use Poetry 2.4.1 (lock-version 2.1) and ignore host `node_modules`/env files.
 - Graphify graph built (560 nodes, 1156 edges, 48 communities) and agent integration installed (`AGENTS.md`, `.kilo/plugins/graphify.js`). The SQL migration is not indexed because `tree_sitter_sql` is not installed.
-- NOT validated: GitHub-hosted Actions run (`act` and `gh` are unavailable), browser voice UI, any real provider call.
+- GitHub Actions run #1 (commit `cc8a67f`, 2026-10-19) passed: `api`, `agent`, `web` and `secrets`. `act`/`gh` are not installed locally; the remote run is the CI evidence.
+- NOT validated: browser voice UI, any real provider call.
 
 ## Open decisions / proposals
 - Host ports in `docker-compose.yml` are env-overridable (`POSTGRES_HOST_PORT`, `REDIS_HOST_PORT`, `API_HOST_PORT`, `WEB_HOST_PORT`, `LIVEKIT_*_PORT`) with the original defaults. Needed to run alongside other local stacks without stopping them.
@@ -36,4 +37,4 @@
 
 ## Session log
 - Scaffolding session: created repo base, prompts, docs.
-- 2026-10-19 P01: installed Poetry/npm deps and lock files; fixed Dockerfile Poetry pin + added `.dockerignore`; parameterized host ports; validated full compose stack from a clean volume (`/health` 200, web 200, agent registered); verified API on Python 3.11 (33 tests) and agent (5 tests); rebuilt Graphify graph and installed the Kilo integration; reviewed CI workflow (pinned Poetry 2.4.1) — no GitHub run yet.
+- 2026-10-19 P01: installed Poetry/npm deps and lock files; fixed Dockerfile Poetry pin + added `.dockerignore`; parameterized host ports; validated full compose stack from a clean volume (`/health` 200, web 200, agent registered); verified API on Python 3.11 (33 tests) and agent (5 tests); rebuilt Graphify graph and installed the Kilo integration; pinned Poetry 2.4.1 in CI. Pushed `cc8a67f`; GitHub Actions run #1 green (api, agent, web, secrets).
