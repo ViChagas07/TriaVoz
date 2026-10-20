@@ -7,7 +7,6 @@ import asyncio
 import json
 import logging
 import os
-import re
 import time
 from datetime import datetime
 from typing import Any
@@ -29,20 +28,12 @@ from triavoz_agent.agent import CallContext, Receptionist
 from triavoz_agent.api_client import ApiError, TriaVozApi
 from triavoz_agent.config import WorkerConfig
 from triavoz_agent.handoff import SipHandoff, find_caller_identity
+from triavoz_agent.policy import HandoffPolicy
 from triavoz_agent.prompts import build_instructions, greeting_text
 from triavoz_agent.telemetry import LatencyTracker, TurnLatencyTracker, estimate_cost_cents
 
 log = logging.getLogger("triavoz.agent")
 
-_URGENT = re.compile(
-    r"dor no peito|falta de ar|sangramento|desmaio|infarto|avc|derrame|"
-    r"emerg[eê]ncia|urgente|suic[ií]d|me matar|não consigo respirar",
-    re.IGNORECASE,
-)
-_CLARIFY = re.compile(
-    r"n[ãa]o entendi|pode repetir|n[ãa]o consegui entender|desculpe,? n[ãa]o",
-    re.IGNORECASE,
-)
 _REDACT = {
     "customer_name",
     "patient_name",
@@ -198,7 +189,8 @@ async def entrypoint(ctx: JobContext) -> None:
     persist_tasks: set[asyncio.Task[None]] = set()
     started = time.monotonic()
     done = asyncio.Event()
-    state = {"seq": 0, "clarify_streak": 0, "interruptions": 0}
+    state = {"seq": 0, "interruptions": 0}
+    policy = HandoffPolicy()
 
     async def persist_turn(turn: dict[str, Any]) -> None:
         try:
@@ -261,25 +253,24 @@ async def entrypoint(ctx: JobContext) -> None:
         if role not in ("user", "assistant") or not text:
             return
         add_turn({"speaker": "patient" if role == "user" else "agent", "content": str(text)})
-        if role == "user" and _URGENT.search(str(text)) and not call.handoff_requested:
-            asyncio.create_task(
-                trigger_handoff(
-                    "urgency",
-                    "Interrompa o fluxo. Diga para procurar o SAMU 192 imediatamente.",
-                )
-            )
-        if role == "assistant":
-            if _CLARIFY.search(str(text)):
-                state["clarify_streak"] += 1
-                if state["clarify_streak"] >= 2 and not call.handoff_requested:
-                    asyncio.create_task(
-                        trigger_handoff(
-                            "misunderstanding",
-                            "Diga que não conseguiu entender e que registrou um pedido de retorno.",
-                        )
+        if role == "user":
+            reason = policy.observe_user(str(text))
+            if reason == "urgency" and not call.handoff_requested:
+                asyncio.create_task(
+                    trigger_handoff(
+                        "urgency",
+                        "Interrompa o fluxo. Diga para procurar o SAMU 192 imediatamente.",
                     )
-            else:
-                state["clarify_streak"] = 0
+                )
+        if role == "assistant":
+            reason = policy.observe_assistant(str(text))
+            if reason == "misunderstanding" and not call.handoff_requested:
+                asyncio.create_task(
+                    trigger_handoff(
+                        "misunderstanding",
+                        "Diga que não conseguiu entender e que registrou um pedido de retorno.",
+                    )
+                )
 
     session.on("metrics_collected", on_metrics)
     session.on("conversation_item_added", on_item)

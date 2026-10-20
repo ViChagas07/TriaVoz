@@ -8,6 +8,7 @@ from triavoz_agent.agent import CallContext
 from triavoz_agent.api_client import SIGNATURE_HEADER, TIMESTAMP_HEADER, ApiError, TriaVozApi, sign
 from triavoz_agent.config import WorkerConfig
 from triavoz_agent.main import redact_tool_arguments
+from triavoz_agent.policy import HandoffPolicy
 from triavoz_agent.prompts import build_greeting_instructions, build_instructions
 from triavoz_agent.telemetry import (
     LatencyTracker,
@@ -99,6 +100,23 @@ def test_redaction_removes_patient_identifiers() -> None:
         "description": "[redacted]",
     }
     assert redact_tool_arguments("not-json") == {"arguments": "[unparseable]"}
+
+
+def test_handoff_policy_detects_urgency_fail_open() -> None:
+    policy = HandoffPolicy()
+    assert policy.observe_user("Estou com dor no peito e falta de ar") == "urgency"
+    assert policy.observe_user("Quero marcar uma consulta") is None
+
+
+def test_handoff_policy_triggers_after_two_clarifications_and_resets() -> None:
+    policy = HandoffPolicy()
+    assert policy.observe_assistant("Não entendi, pode repetir?") is None
+    assert policy.observe_assistant("Desculpe, não consegui entender.") == "misunderstanding"
+    assert policy.clarify_streak == 0
+    assert policy.observe_assistant("Claro, qual o serviço?") is None
+    assert policy.observe_assistant("Não entendi.") is None
+    assert policy.observe_assistant("Certo, anotei.") is None
+    assert policy.clarify_streak == 0
 
 
 def test_turn_latency_computes_time_to_first_audio() -> None:
