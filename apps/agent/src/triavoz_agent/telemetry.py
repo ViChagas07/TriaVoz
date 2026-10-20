@@ -36,6 +36,35 @@ class LatencyTracker:
         }
 
 
+@dataclass
+class TurnLatencyTracker:
+    """Correlates EOU + LLM TTFT + TTS TTFB into time-to-first-audio.
+
+    Metrics are emitted in that order for a turn. A new EOU starts a fresh sample; TTS closes it.
+    The individual stages are still recorded so the dashboard can show a breakdown.
+    """
+
+    latency: LatencyTracker
+    current: dict[str, float] = field(default_factory=dict)
+
+    def record(self, stage: str, seconds: float) -> None:
+        if seconds < 0:
+            return
+        self.latency.record(stage, seconds)
+        if stage == "end_of_utterance":
+            self.current = {"end_of_utterance": seconds}
+            return
+        self.current[stage] = seconds
+        if {"end_of_utterance", "llm_ttft", "tts_ttfb"} <= self.current.keys():
+            self.latency.record(
+                "time_to_first_audio",
+                self.current["end_of_utterance"]
+                + self.current["llm_ttft"]
+                + self.current["tts_ttfb"],
+            )
+            self.current = {}
+
+
 def estimate_cost_cents(
     cfg: WorkerConfig,
     *,

@@ -20,6 +20,8 @@ class WorkerConfig:
     stt_language: str
     tts_voice_id: str
     tts_model: str
+    tts_provider: str
+    tts_language: str
     max_call_seconds: int
     # Unit prices are NOT hardcoded (vendors change them). Set them in the environment to get
     # a cost estimate per call; leave at 0 to record usage only.
@@ -38,6 +40,8 @@ class WorkerConfig:
             stt_language=os.environ.get("TRIAVOZ_STT_LANGUAGE", "pt-BR"),
             tts_voice_id=os.environ["TRIAVOZ_TTS_VOICE_ID"],
             tts_model=os.environ.get("TRIAVOZ_TTS_MODEL", ""),
+            tts_provider=os.environ.get("TRIAVOZ_TTS_PROVIDER", "cartesia"),
+            tts_language=os.environ.get("TRIAVOZ_TTS_LANGUAGE", "pt-BR"),
             max_call_seconds=int(os.environ.get("TRIAVOZ_MAX_CALL_SECONDS", "300")),
             price_stt_per_minute_cents=_f("TRIAVOZ_PRICE_STT_PER_MIN_CENTS"),
             price_llm_per_million_input_tokens_cents=_f("TRIAVOZ_PRICE_LLM_IN_PER_M_CENTS"),

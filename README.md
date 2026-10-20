@@ -64,6 +64,17 @@ and returns a short-lived LiveKit token; the room metadata carries `clinic_id`, 
 timezone and the published agent config. Post-call summaries are wired behind a port but return 503
 until a reviewed provider is configured (P07).
 
+Voice worker (real providers; see ADR 0007):
+```bash
+cd apps/agent
+poetry run python -m triavoz_agent.main start   # registers with LIVEKIT_URL
+poetry run python scripts/voice_smoke.py        # scripted audio caller, API at :58001
+```
+The worker refuses jobs without `clinic_id` in room metadata. Default pipeline: Deepgram Nova-3
+pt-BR, LiveKit Cloud Inference `openai/gpt-4.1-mini`, LiveKit Inference/Cartesia TTS pt-BR.
+`TRIAVOZ_TTS_PROVIDER=elevenlabs` is supported once a valid ElevenLabs key is configured. Web
+handoff records a callback request; `TRIAVOZ_HANDOFF_SIP_URI` enables the SIP transfer adapter.
+
 ## Status
 See [`docs/agent/PROGRESS.md`](docs/agent/PROGRESS.md) — it states exactly what is verified and what is not.
 

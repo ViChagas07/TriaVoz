@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "triavoz-agent"
 version = "0.1.0"
-description = "TriaVoz voice worker — LiveKit Agents pipeline (STT → LLM tool calling → TTS)"
+description = "TriaVoz voice worker - LiveKit Agents pipeline"
 authors = ["Alisson Davi Gonzaga Chagas"]
 readme = "README.md"
 packages = [{ include = "triavoz_agent", from = "src" }]
@@ -9,11 +9,13 @@ packages = [{ include = "triavoz_agent", from = "src" }]
 [tool.poetry.dependencies]
 python = ">=3.11,<3.13"
 livekit-agents = ">=1.8"
+livekit-api = ">=1.2"
 livekit-plugins-deepgram = ">=1.8"
 livekit-plugins-elevenlabs = ">=1.8"
 livekit-plugins-anthropic = ">=1.8"
 livekit-plugins-silero = ">=1.8"
 httpx = ">=0.27"
+tzdata = ">=2024.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"

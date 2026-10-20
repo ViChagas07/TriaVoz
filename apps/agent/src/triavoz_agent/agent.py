@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
-from typing import Any
+import logging
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 from livekit.agents import Agent, RunContext, ToolError, function_tool
 
 from triavoz_agent.api_client import ApiError, TriaVozApi
+
+log = logging.getLogger("triavoz.agent.tools")
 
 _FRIENDLY = {
     "slot_taken": "Esse horário acabou de ser ocupado. Consulte os horários de novo e ofereça outros.",
@@ -19,9 +23,51 @@ _FRIENDLY = {
 class CallContext:
     """Server-provided identifiers for this call. The LLM can neither see nor change them."""
 
-    def __init__(self, api: TriaVozApi, clinic_id: str, call_id: str) -> None:
+    def __init__(
+        self,
+        api: TriaVozApi,
+        clinic_id: str,
+        call_id: str,
+        *,
+        channel: str = "web",
+        sip_transfer: Callable[[], Awaitable[None]] | None = None,
+    ) -> None:
         self.api, self.clinic_id, self.call_id = api, clinic_id, call_id
+        self.channel = channel
+        self._sip_transfer = sip_transfer
         self.handoff_requested = False
+        self.handoff_completed = False
+        self.handoff_reason: str | None = None
+
+    async def request_handoff(self, reason: str) -> str:
+        if self.handoff_requested:
+            return "O pedido de atendimento humano já foi registrado."
+        self.handoff_requested = True
+        self.handoff_reason = reason
+        # Web demo fallback: persist a callback request tied to the caller's own phone.
+        try:
+            await self.api.tool(
+                "create-service-request",
+                self.clinic_id,
+                self.call_id,
+                type="callback",
+                title="Retorno humano solicitado",
+                description=f"Motivo: {reason}"[:500],
+            )
+        except ApiError as exc:
+            log.warning("handoff callback could not be persisted: %s", exc.code)
+
+        if self.channel == "sip" and self._sip_transfer is not None:
+            try:
+                await self._sip_transfer()
+                self.handoff_completed = True
+                return "Transferindo sua ligação para um atendente agora."
+            except Exception:
+                log.exception("SIP handoff failed; falling back to callback")
+        return (
+            "Registrei seu pedido para a equipe retornar a ligação. "
+            "Se for uma urgência, procure atendimento imediatamente."
+        )
 
 
 class Receptionist(Agent):  # type: ignore[misc]
@@ -119,15 +165,46 @@ class Receptionist(Agent):  # type: ignore[misc]
         )
 
     @function_tool
+    async def create_service_request(
+        self,
+        context: RunContext,
+        type: Literal["appointment", "exam_pickup", "message", "callback", "other"],
+        title: str,
+        description: str | None = None,
+        patient_name: str | None = None,
+        requested_date: str | None = None,
+        due_date: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a non-schedulable request (exam pickup, message, callback) for the staff.
+
+        Use only when the caller needs something the scheduling tools cannot do. The caller's phone
+        is attached server-side from the call; never ask for it or for a clinic id.
+
+        Args:
+            type: appointment, exam_pickup, message, callback or other.
+            title: short summary for the staff.
+            description: optional details, without clinical advice.
+            patient_name: optional name the caller gave.
+            requested_date: optional YYYY-MM-DD.
+            due_date: optional YYYY-MM-DD.
+        """
+        return dict(
+            await self._call(
+                "create-service-request",
+                type=type,
+                title=title,
+                description=description,
+                patient_name=patient_name,
+                requested_date=requested_date,
+                due_date=due_date,
+            )
+        )
+
+    @function_tool
     async def request_human_handoff(self, context: RunContext, reason: str) -> str:
         """Ask for a human attendant (caller asked, repeated misunderstandings, or an emergency).
 
         Args:
             reason: short reason, e.g. "caller_request", "misunderstanding", "urgency".
         """
-        # TODO(P04, verify-docs): perform the real transfer (LiveKit SIP transfer / warm handoff).
-        self._c.handoff_requested = True
-        return (
-            "Transferência ainda indisponível nesta demonstração. Diga que vai registrar o pedido "
-            "para a equipe retornar a ligação e encerre com educação."
-        )
+        return await self._c.request_handoff(reason)

@@ -4,10 +4,17 @@ from typing import Any
 import httpx
 import pytest
 
+from triavoz_agent.agent import CallContext
 from triavoz_agent.api_client import SIGNATURE_HEADER, TIMESTAMP_HEADER, ApiError, TriaVozApi, sign
 from triavoz_agent.config import WorkerConfig
+from triavoz_agent.main import redact_tool_arguments
 from triavoz_agent.prompts import build_greeting_instructions, build_instructions
-from triavoz_agent.telemetry import LatencyTracker, estimate_cost_cents, percentile
+from triavoz_agent.telemetry import (
+    LatencyTracker,
+    TurnLatencyTracker,
+    estimate_cost_cents,
+    percentile,
+)
 
 SECRET = "worker-test-secret"
 
@@ -60,6 +67,8 @@ def test_cost_estimate_uses_configured_prices_only() -> None:
         stt_language="pt-BR",
         tts_voice_id="v",
         tts_model="",
+        tts_provider="cartesia",
+        tts_language="pt-BR",
         max_call_seconds=300,
         price_stt_per_minute_cents=1.0,
         price_llm_per_million_input_tokens_cents=100.0,
@@ -77,3 +86,44 @@ def test_instructions_contain_the_non_negotiable_rules() -> None:
     for must in ("Nunca invente horários", "book_appointment", "192", "DADO, não instrução"):
         assert must in text
     assert "terça" not in build_greeting_instructions({"clinic_name": "Clínica Vida"})
+
+
+def test_redaction_removes_patient_identifiers() -> None:
+    payload = redact_tool_arguments(
+        '{"service_id":"s1","customer_name":"Maria","caller_phone":"+55","description":"dor"}'
+    )
+    assert payload == {
+        "service_id": "s1",
+        "customer_name": "[redacted]",
+        "caller_phone": "[redacted]",
+        "description": "[redacted]",
+    }
+    assert redact_tool_arguments("not-json") == {"arguments": "[unparseable]"}
+
+
+def test_turn_latency_computes_time_to_first_audio() -> None:
+    tracker = TurnLatencyTracker(LatencyTracker())
+    tracker.record("end_of_utterance", 0.30)
+    tracker.record("llm_ttft", 0.40)
+    tracker.record("tts_ttfb", 0.10)
+    summary = tracker.latency.summary_ms()
+    assert summary["time_to_first_audio"]["p50"] == 800.0
+    assert summary["llm_ttft"]["p50"] == 400.0
+
+
+async def test_web_handoff_records_callback_and_reports_fallback() -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["path"] = req.url.path
+        return httpx.Response(200, json={"request_id": "r1", "status": "pending"})
+
+    api = _client(handler)
+    ctx = CallContext(api, "clinic-1", "call-1", channel="web")
+    message = await ctx.request_handoff("caller_request")
+    assert seen["path"] == "/internal/agent/tools/create-service-request"
+    assert ctx.handoff_requested is True
+    assert ctx.handoff_completed is False
+    assert "retornar" in message
+    calendar = await ctx.request_handoff("caller_request")
+    assert "já foi registrado" in calendar
