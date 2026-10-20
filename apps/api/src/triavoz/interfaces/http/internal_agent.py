@@ -13,6 +13,7 @@ import re
 from datetime import UTC, date, datetime
 from typing import Any, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -89,7 +90,8 @@ class StartCall(BaseModel):
 class SlotsIn(Ctx):
     service_id: UUID
     date: date
-    professional_id: UUID | None = None
+    # ID preferred; a name is accepted because the LLM may repeat the professional it heard.
+    professional_id: str | None = Field(default=None, max_length=120)
 
 
 class BookIn(Ctx):
@@ -127,6 +129,8 @@ class EndIn(Ctx):
     usage: dict[str, Any] = Field(default_factory=dict)
     latency_ms: dict[str, Any] = Field(default_factory=dict)
     cost_cents: float = Field(default=0, ge=0)
+    handoff_requested: bool = False
+    handoff_completed: bool = False
 
 
 def _aware(dt: datetime) -> datetime:
@@ -180,12 +184,24 @@ async def list_services(body: Ctx) -> list[dict[str, Any]]:
 async def list_slots(body: SlotsIn) -> list[dict[str, Any]]:
     try:
         async with tenant_session(body.clinic_id) as session:
-            slots = await ListAvailableSlots(PgSchedulingRepository(session)).execute(
+            repo = PgSchedulingRepository(session)
+            zone = ZoneInfo(await repo.clinic_timezone(body.clinic_id))
+            professional_id = body.professional_id
+            if professional_id:
+                try:
+                    UUID(professional_id)
+                except ValueError:
+                    # The LLM may pass the name it just heard; resolve it server-side.
+                    resolved = await repo.find_professional_by_name(professional_id)
+                    if resolved is None:
+                        raise InvalidRequest("professional_not_found") from None
+                    professional_id = str(resolved)
+            slots = await ListAvailableSlots(repo).execute(
                 clinic_id=body.clinic_id,
                 service_id=body.service_id,
                 day=body.date,
                 now=datetime.now(UTC),
-                professional_id=body.professional_id,
+                professional_id=UUID(professional_id) if professional_id else None,
             )
     except DomainError as exc:
         raise _http(exc) from exc
@@ -193,7 +209,8 @@ async def list_slots(body: SlotsIn) -> list[dict[str, Any]]:
         {
             "professional_id": str(s.professional_id),
             "professional_name": s.professional_name,
-            "starts_at": s.starts_at.isoformat(),
+            # Always speak/localize in the clinic timezone; timestamptz from PostgreSQL is UTC.
+            "starts_at": s.starts_at.astimezone(zone).isoformat(),
         }
         for s in slots
     ]
@@ -250,8 +267,10 @@ async def book(
 async def my_appointments(body: Ctx) -> list[dict[str, str]]:
     try:
         async with tenant_session(body.clinic_id) as session:
+            repo = PgSchedulingRepository(session)
+            zone = ZoneInfo(await repo.clinic_timezone(body.clinic_id))
             phone = await PgCallRepository(session).caller_number(body.call_id)
-            items = await ListMyAppointments(PgSchedulingRepository(session)).execute(
+            items = await ListMyAppointments(repo).execute(
                 caller_phone=phone, now=datetime.now(UTC)
             )
     except DomainError as exc:
@@ -261,7 +280,7 @@ async def my_appointments(body: Ctx) -> list[dict[str, str]]:
             "appointment_id": str(i.id),
             "service": i.service_name,
             "professional": i.professional_name,
-            "starts_at": i.starts_at.isoformat(),
+            "starts_at": i.starts_at.astimezone(zone).isoformat(),
         }
         for i in items
     ]
@@ -376,6 +395,8 @@ async def end_call(body: EndIn, events: EventPublisher = Depends(get_events_dep)
             usage_json=json.dumps(body.usage),
             latency_json=json.dumps(body.latency_ms),
             cost_cents=body.cost_cents,
+            handoff_requested=body.handoff_requested,
+            handoff_completed=body.handoff_completed,
         )
     await events.publish(body.clinic_id, "call.ended", {"call_id": str(body.call_id)})
     return {"status": "ok"}

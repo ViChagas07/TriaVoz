@@ -188,6 +188,18 @@ class PgSchedulingRepository:
             {"id": appointment_id, "now": now},
         )
 
+    async def find_professional_by_name(self, name: str) -> UUID | None:
+        value = (
+            await self._s.execute(
+                text(
+                    "SELECT id FROM professionals WHERE lower(name) = lower(:name) "
+                    "AND is_active LIMIT 1"
+                ),
+                {"name": name},
+            )
+        ).scalar()
+        return UUID(str(value)) if value else None
+
     async def get_appointment_for_staff(
         self, appointment_id: UUID
     ) -> tuple[UUID, UUID, UUID, datetime, str] | None:

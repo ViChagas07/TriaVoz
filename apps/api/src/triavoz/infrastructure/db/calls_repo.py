@@ -72,12 +72,16 @@ class PgCallRepository:
         usage_json: str,
         latency_json: str,
         cost_cents: float,
+        handoff_requested: bool = False,
+        handoff_completed: bool = False,
     ) -> None:
         await self._s.execute(
             text(
                 "UPDATE calls SET ended_at = now(), status = :status, end_reason = :reason, "
                 "duration_seconds = :dur, usage = CAST(:usage AS jsonb), "
-                "latency_ms = CAST(:lat AS jsonb), cost_cents = :cost WHERE id = :id"
+                "latency_ms = CAST(:lat AS jsonb), cost_cents = :cost, "
+                "handoff_requested = :handoff, handoff_completed = :handoff_done "
+                "WHERE id = :id"
             ),
             {
                 "id": call_id,
@@ -87,5 +91,7 @@ class PgCallRepository:
                 "usage": usage_json,
                 "lat": latency_json,
                 "cost": cost_cents,
+                "handoff": handoff_requested,
+                "handoff_done": handoff_completed,
             },
         )
