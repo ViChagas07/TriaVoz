@@ -1,15 +1,16 @@
 import { cookies } from "next/headers";
 import { getRequestConfig } from "next-intl/server";
+import { defaultLocale, locales, loadMessages, type Locale } from "./messages";
 
-export const locales = ["pt-BR", "en"] as const;
-export type Locale = (typeof locales)[number];
-export const defaultLocale: Locale = "pt-BR";
+export { defaultLocale, locales };
+export type { Locale };
 
-// Cookie-based locale for the base scaffold. TODO(P06): move to path-based routing for SEO/hreflang.
+// Cookie-based locale keeps the URL surface at the nine product routes. hreflang points at
+// `?lang=pt-BR|en`; middleware persists that into the cookie and redirects to the clean URL.
 export default getRequestConfig(async () => {
   const cookieLocale = (await cookies()).get("locale")?.value;
   const locale: Locale = (locales as readonly string[]).includes(cookieLocale ?? "")
     ? (cookieLocale as Locale)
     : defaultLocale;
-  return { locale, messages: (await import(`../../messages/${locale}.json`)).default };
+  return { locale, messages: await loadMessages(locale) };
 });

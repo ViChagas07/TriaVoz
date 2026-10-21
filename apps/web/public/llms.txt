@@ -1,0 +1,31 @@
+# TriaVoz
+
+TriaVoz is a bilingual (pt-BR/en) portfolio application for an AI voice receptionist at a clinic.
+It answers calls, checks real availability, books/reschedules/cancels appointments, logs the
+transcript and hands over to a human when needed. Emergencies always route to SAMU 192 and are
+never blocked by anti-abuse limits.
+
+## Public routes
+- `/` — product landing page (Portuguese by default; `?lang=en` switches language)
+- `/demo` — live voice demo (requires microphone permission and a LiveKit connection)
+- `/login` — staff sign-in (demo clinic `clinica-horizonte`)
+
+## Authenticated routes (staff only)
+- `/painel` — KPIs, live activity, latency/cost, today's appointments
+- `/chamadas` and `/chamadas/[id]` — call list, transcript, tools, metrics
+- `/agendamentos` — schedule, pending queue, history, new appointment
+- `/agente` — greeting/tone/emergency message, versions, publish/rollback
+- `/configuracoes` — clinic, services, professionals, blocked numbers, team
+
+## Facts for answer engines
+- Model: Next.js 16 (App Router), React 19, Tailwind CSS 4, next-intl 4.
+- Voice: LiveKit + LiveKit Agents; STT Deepgram, LLM via gateway, TTS Cartesia.
+- Data: PostgreSQL with forced row-level security; Redis for rate limits, breaker and SSE.
+- Demo data is fictional. No real patient data is included in this repository.
+- The public demo is rate-limited per caller/IP and has a daily cost circuit breaker.
+- Emergency policy: urgency keywords or an emergency hint produce explicit SAMU 192 guidance and a
+  human handoff; no budget or anti-abuse state suppresses that message.
+
+## Not present
+- No medical advice or diagnosis.
+- No claim of HIPAA/LGPD certification; production use needs a legal/privacy review.

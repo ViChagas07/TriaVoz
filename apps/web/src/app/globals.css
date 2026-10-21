@@ -1,80 +1,105 @@
 @import "tailwindcss";
 
 /* ───────── TriaVoz design tokens ─────────
-   Concept: deep teal brand + "triage" status colors. Never rely on color alone for status
-   (StatusBadge always pairs color with an icon and text). Contrast target: WCAG AA. */
+   Brand: deep teal + cyan voice accent. Status colors are "triage" colors.
+   Contrast: small text never uses --voice; use --text / --text-muted / --primary-strong.
+   AA pairs in both themes: text/background, muted/surface, primary-contrast/primary. */
 :root {
-  --background: #f5f8fa;
+  color-scheme: light;
+  --background: #f4f8fa;
   --surface: #ffffff;
-  --border: #e2e8ee;
-  --text: #0b2a3c;
-  --text-muted: #5b6b79;
+  --surface-2: #eef4f7;
+  --border: #dbe5ec;
+  --text: #0a2736;
+  --text-muted: #526472;
   --primary: #0e7c86;
-  --primary-strong: #0b5f67;
+  --primary-strong: #0a5e66;
+  --primary-soft: #d9f0f1;
   --primary-contrast: #ffffff;
   --voice: #38bdf8;
+  --voice-deep: #0369a1;
+  --ring: #0e7c86;
+  --shadow: 0 1px 2px rgb(10 39 54 / 0.05), 0 18px 40px -24px rgb(10 39 54 / 0.35);
 
-  --st-urgent: #dc2626;
-  --st-pending: #b45309; /* amber-700: AA on white; the badge fill uses a tint */
-  --st-progress: #2563eb;
-  --st-done: #15803d;
-  --st-cancelled: #64748b;
-  --st-spam: #475569;
+  --st-urgent: #b91c1c;
+  --st-pending: #92400e;
+  --st-progress: #1d4ed8;
+  --st-done: #166534;
+  --st-cancelled: #475569;
+  --st-spam: #3f4c59;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --background: #0a1a24;
-    --surface: #112533;
-    --border: #1f3a4c;
-    --text: #e6eef3;
-    --text-muted: #93a8b8;
+    color-scheme: dark;
+    --background: #071923;
+    --surface: #0d2431;
+    --surface-2: #12303f;
+    --border: #1d3d4f;
+    --text: #e8f1f5;
+    --text-muted: #9db2c0;
     --primary: #2dd4bf;
-    --primary-strong: #14b8a6;
-    --primary-contrast: #06222a;
-    --st-urgent: #f87171;
-    --st-pending: #fbbf24;
-    --st-progress: #60a5fa;
-    --st-done: #4ade80;
-    --st-cancelled: #94a3b8;
-    --st-spam: #94a3b8;
+    --primary-strong: #7ee8db;
+    --primary-soft: #133a40;
+    --primary-contrast: #04241f;
+    --voice: #38bdf8;
+    --voice-deep: #7dd3fc;
+    --ring: #2dd4bf;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 24px 60px -34px rgb(0 0 0 / 0.9);
+    --st-urgent: #fca5a5;
+    --st-pending: #fcd34d;
+    --st-progress: #93c5fd;
+    --st-done: #86efac;
+    --st-cancelled: #cbd5e1;
+    --st-spam: #cbd5e1;
   }
 }
 
 :root[data-theme="dark"] {
-  --background: #0a1a24;
-  --surface: #112533;
-  --border: #1f3a4c;
-  --text: #e6eef3;
-  --text-muted: #93a8b8;
+  color-scheme: dark;
+  --background: #071923;
+  --surface: #0d2431;
+  --surface-2: #12303f;
+  --border: #1d3d4f;
+  --text: #e8f1f5;
+  --text-muted: #9db2c0;
   --primary: #2dd4bf;
-  --primary-strong: #14b8a6;
-  --primary-contrast: #06222a;
-  --st-urgent: #f87171;
-  --st-pending: #fbbf24;
-  --st-progress: #60a5fa;
-  --st-done: #4ade80;
-  --st-cancelled: #94a3b8;
-  --st-spam: #94a3b8;
+  --primary-strong: #7ee8db;
+  --primary-soft: #133a40;
+  --primary-contrast: #04241f;
+  --voice: #38bdf8;
+  --voice-deep: #7dd3fc;
+  --ring: #2dd4bf;
+  --st-urgent: #fca5a5;
+  --st-pending: #fcd34d;
+  --st-progress: #93c5fd;
+  --st-done: #86efac;
+  --st-cancelled: #cbd5e1;
+  --st-spam: #cbd5e1;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-border: var(--border);
   --color-text: var(--text);
   --color-muted: var(--text-muted);
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
   --color-primary-contrast: var(--primary-contrast);
   --color-voice: var(--voice);
+  --color-voice-deep: var(--voice-deep);
   --color-st-urgent: var(--st-urgent);
   --color-st-pending: var(--st-pending);
   --color-st-progress: var(--st-progress);
   --color-st-done: var(--st-done);
   --color-st-cancelled: var(--st-cancelled);
   --color-st-spam: var(--st-spam);
-  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  --shadow-card: var(--shadow);
 }
 
 html {
@@ -82,13 +107,152 @@ html {
   color: var(--text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+::selection {
+  background: var(--primary-soft);
+  color: var(--text);
 }
 
 :focus-visible {
-  outline: 2px solid var(--voice);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
+/* Tailwind does not ship a prose plugin here; these cover the few rich blocks we render. */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* ───────── Voice orb ─────────
+   State is expressed by animation + label + color, never color alone. */
+.orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.orb-halo,
+.orb-halo-2 {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--voice) 35%, transparent);
+  background: radial-gradient(
+    circle at 50% 45%,
+    color-mix(in oklab, var(--voice) 22%, transparent),
+    transparent 68%
+  );
+  animation: orb-breathe 4.8s ease-in-out infinite;
+}
+
+.orb-halo-2 {
+  inset: 12%;
+  animation-delay: -1.4s;
+  opacity: 0.7;
+}
+
+.orb-core {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 35% 25%, color-mix(in oklab, var(--voice) 55%, white), transparent 45%),
+    linear-gradient(145deg, var(--voice-deep), var(--primary-strong));
+  box-shadow: 0 18px 50px -18px color-mix(in oklab, var(--voice) 70%, transparent);
+  color: white;
+}
+
+.orb-bar {
+  width: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.9;
+  animation: orb-wave 1.15s ease-in-out infinite;
+  transform-origin: center;
+}
+.orb-bar:nth-child(1) { height: 26%; animation-delay: -0.9s; }
+.orb-bar:nth-child(2) { height: 52%; animation-delay: -0.6s; }
+.orb-bar:nth-child(3) { height: 72%; animation-delay: -0.3s; }
+.orb-bar:nth-child(4) { height: 46%; animation-delay: -0.75s; }
+.orb-bar:nth-child(5) { height: 30%; animation-delay: -0.45s; }
+
+.orb[data-state="idle"] .orb-bar,
+.orb[data-state="ended"] .orb-bar,
+.orb[data-state="error"] .orb-bar {
+  animation-play-state: paused;
+  opacity: 0.55;
+  height: 18%;
+}
+.orb[data-state="connecting"] .orb-halo { animation-duration: 1.35s; }
+.orb[data-state="connecting"] .orb-bar { animation-duration: 0.8s; }
+.orb[data-state="speaking"] .orb-bar { animation-duration: 0.58s; }
+.orb[data-state="listening"] .orb-halo { animation-duration: 3.2s; }
+.orb[data-state="error"] .orb-core {
+  background: linear-gradient(145deg, var(--st-urgent), color-mix(in oklab, var(--st-urgent) 55%, black));
+  box-shadow: 0 18px 50px -18px color-mix(in oklab, var(--st-urgent) 55%, transparent);
+}
+.orb[data-state="ended"] .orb-core {
+  background: linear-gradient(145deg, var(--text-muted), var(--text));
+  box-shadow: none;
+}
+
+@keyframes orb-wave {
+  0%, 100% { transform: scaleY(0.45); }
+  50% { transform: scaleY(1); }
+}
+@keyframes orb-breathe {
+  0%, 100% { transform: scale(0.94); opacity: 0.45; }
+  50% { transform: scale(1.06); opacity: 0.9; }
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface) 75%, transparent), transparent);
+  animation: shimmer 1.6s infinite;
+}
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+.transcript-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.transcript-scroll::-webkit-scrollbar { width: 8px; }
+.transcript-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+.panel-in {
+  animation: panel-in 180ms ease-out both;
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  * { animation: none !important; transition: none !important; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .orb-halo, .orb-halo-2 { opacity: 0.5; }
 }

@@ -25,3 +25,4 @@ graphify-out/.graphify_semantic_marker
 graphify-out/manifest.json
 graphify-out/20*/
 graphify-out/*.html
+.playwright-mcp/

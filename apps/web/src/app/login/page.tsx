@@ -1,26 +1,43 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { LoginForm } from "@/components/LoginForm";
+import { PublicHeader } from "@/components/PublicHeader";
+import { ScopedMessages } from "@/components/ScopedMessages";
+import { getSession } from "@/lib/server-api";
+import { Logo } from "@/components/Logo";
 
-export default async function LoginPage() {
-  const t = await getTranslations("login");
-  // TODO(P03/P06): wire to POST /api/v1/auth/login (clinic code + email + password).
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("auth");
+  return { title: t("title"), robots: { index: false, follow: false } };
+}
+
+function safeNext(value: string | string[] | undefined): string {
+  if (typeof value !== "string") return "/painel";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/painel";
+  return value;
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const session = await getSession();
+  if (session) redirect("/painel");
+  const params = await searchParams;
+
   return (
-    <main className="mx-auto flex min-h-dvh max-w-sm flex-col justify-center gap-4 p-6">
-      <h1 className="text-2xl font-semibold">{t("title")}</h1>
-      <label className="grid gap-1 text-sm">
-        {t("clinic")}
-        <input className="rounded-md border border-border bg-surface px-3 py-2" name="clinic" autoComplete="organization" />
-      </label>
-      <label className="grid gap-1 text-sm">
-        {t("email")}
-        <input className="rounded-md border border-border bg-surface px-3 py-2" name="email" type="email" autoComplete="username" />
-      </label>
-      <label className="grid gap-1 text-sm">
-        {t("password")}
-        <input className="rounded-md border border-border bg-surface px-3 py-2" name="password" type="password" autoComplete="current-password" />
-      </label>
-      <button className="rounded-lg bg-primary px-4 py-2 font-medium text-primary-contrast" type="button">
-        {t("submit")}
-      </button>
-    </main>
+    <ScopedMessages namespaces={["auth", "common", "errors", "nav", "a11y", "theme"]}>
+      <div className="min-h-dvh bg-[radial-gradient(circle_at_20%_0%,color-mix(in_oklab,var(--voice)_16%,transparent),transparent_40%),radial-gradient(circle_at_90%_100%,color-mix(in_oklab,var(--primary)_12%,transparent),transparent_45%)]">
+        <PublicHeader showLogin={false} />
+        <main id="main" className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-6xl flex-col justify-center px-4 py-10 sm:px-6">
+          <div className="mb-8 lg:hidden">
+            <Logo />
+          </div>
+          <LoginForm nextPath={safeNext(params.next)} />
+        </main>
+      </div>
+    </ScopedMessages>
   );
 }

@@ -1,5 +1,219 @@
-import { PagePlaceholder } from "@/components/PagePlaceholder";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
+import {
+  ArrowRight,
+  CalendarDays,
+  Clock3,
+  PhoneCall,
+  ShieldAlert,
+  Wallet,
+} from "lucide-react";
+import { ActivityFeed } from "@/components/ActivityFeed";
+import { Card, PageHeader } from "@/components/Card";
+import { CostBars, LatencyBars } from "@/components/Charts";
+import { EmptyState } from "@/components/EmptyState";
+import { ScopedMessages } from "@/components/ScopedMessages";
+import {
+  addDays,
+  formatMoney,
+  formatNumber,
+  formatPercent,
+  formatTime,
+  formatWeekdayShort,
+  isoDay,
+  todayInZone,
+} from "@/lib/format";
+import { serverApi } from "@/lib/server-api";
+import type { Appointment, Call, CallList, ClinicSettings, Dashboard } from "@/lib/types";
 
-export default function Page() {
-  return <PagePlaceholder titleKey="dashboard" hint="pending items today, calls today, handoff rate (P06)" />;
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("dashboard");
+  return { title: t("title"), description: t("subtitle") };
+}
+
+export default async function DashboardPage() {
+  const t = await getTranslations("dashboard");
+  const locale = await getLocale();
+  const settings = await serverApi<ClinicSettings>("/settings/clinic");
+  const today = todayInZone(settings.timezone);
+  const [dashboard, agenda, recent] = await Promise.all([
+    serverApi<Dashboard>("/dashboard"),
+    serverApi<Appointment[]>(
+      `/agenda?date_from=${today}&date_to=${isoDay(addDays(new Date(), 1), settings.timezone)}`,
+    ),
+    serverApi<CallList>(`/calls?day=${today}&limit=8`),
+  ]);
+
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = addDays(new Date(), index - 6);
+    return { day: isoDay(date, settings.timezone), date };
+  });
+  const dailyCalls = await Promise.all(
+    days.map(async (entry) => {
+      try {
+        const page = await serverApi<CallList>(`/calls?day=${entry.day}&limit=100`);
+        return page.items.reduce((sum, call) => sum + call.cost_cents, 0);
+      } catch {
+        return 0;
+      }
+    }),
+  );
+
+  const stages = ["stt", "llm", "tts", "total"].map((key) => ({
+    key,
+    label: t(`stage_${key}` as "stage_stt"),
+    p50: dashboard.latency_p50_ms[key] ?? 0,
+    p95: dashboard.latency_p95_ms[key] ?? 0,
+  }));
+
+  const kpis = [
+    {
+      label: t("kpiPending"),
+      value: formatNumber(dashboard.pending_requests, locale),
+      icon: Clock3,
+      href: "/agendamentos?tab=pending",
+    },
+    {
+      label: t("kpiCalls"),
+      value: formatNumber(dashboard.calls_today, locale),
+      icon: PhoneCall,
+      href: "/chamadas",
+    },
+    {
+      label: t("kpiHandoff"),
+      value: formatPercent(dashboard.handoff_rate, locale),
+      icon: ShieldAlert,
+      href: "/chamadas?status=transferred",
+    },
+    {
+      label: t("kpiCost"),
+      value: formatMoney(dashboard.cost_today_cents, locale),
+      icon: Wallet,
+      href: "/chamadas",
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={t("title")}
+        subtitle={t("subtitle")}
+        actions={
+          <>
+            <Link
+              href="/chamadas"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-medium"
+            >
+              {t("quickCalls")}
+              <ArrowRight aria-hidden className="size-3.5" />
+            </Link>
+            <Link
+              href="/agendamentos"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-xs font-semibold text-primary-contrast"
+            >
+              {t("quickAppointments")}
+            </Link>
+          </>
+        }
+      />
+
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon;
+          return (
+            <Link
+              key={kpi.label}
+              href={kpi.href}
+              className="rounded-2xl border border-border bg-surface p-4 transition-colors hover:border-primary/35"
+            >
+              <span className="flex items-center justify-between text-xs text-muted">
+                {kpi.label}
+                <Icon aria-hidden className="size-4 text-primary-strong" />
+              </span>
+              <span className="mt-2 block text-2xl font-semibold tabular-nums tracking-tight">
+                {kpi.value}
+              </span>
+            </Link>
+          );
+        })}
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <Card className="p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold">{t("latencyTitle")}</h2>
+            <span className="text-[0.68rem] text-muted">{t("latencyHint")}</span>
+          </div>
+          <div className="mt-4">
+            {stages.every((stage) => stage.p50 === 0 && stage.p95 === 0) ? (
+              <p className="py-8 text-center text-xs text-muted">{t("noLatency")}</p>
+            ) : (
+              <LatencyBars stages={stages} />
+            )}
+          </div>
+        </Card>
+        <Card className="p-5">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-semibold">{t("costTitle")}</h2>
+            <span className="text-[0.68rem] text-muted">{t("costHint")}</span>
+          </div>
+          <div className="mt-4">
+            <CostBars
+              locale={locale}
+              points={days.map((entry, index) => ({
+                day: entry.day,
+                label: formatWeekdayShort(entry.date, locale, settings.timezone),
+                cents: dailyCalls[index] ?? 0,
+              }))}
+            />
+          </div>
+        </Card>
+      </section>
+
+      <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold">{t("todayTitle")}</h2>
+              <p className="text-[0.68rem] text-muted">{t("todayHint")}</p>
+            </div>
+            <CalendarDays aria-hidden className="size-4 text-primary-strong" />
+          </div>
+          {agenda.length === 0 ? (
+            <EmptyState className="mt-4 border-0 bg-transparent py-8" title={t("emptyAgenda")} />
+          ) : (
+            <ul className="mt-4 divide-y divide-border">
+              {agenda.slice(0, 8).map((appointment) => (
+                <li key={appointment.id} className="flex items-center gap-3 py-2.5">
+                  <span className="w-14 shrink-0 text-xs font-medium tabular-nums text-primary-strong">
+                    {formatTime(appointment.starts_at, locale, settings.timezone)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{appointment.customer_name}</p>
+                    <p className="truncate text-[0.68rem] text-muted">
+                      {appointment.service_name} · {appointment.professional_name}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold">{t("activityTitle")}</h2>
+          </div>
+          <ScopedMessages namespaces={["dashboard", "status", "common"]} timeZone={settings.timezone}>
+            <ActivityFeed
+              initial={recent.items}
+              timezone={settings.timezone}
+              locale={locale}
+            />
+          </ScopedMessages>
+        </Card>
+      </section>
+    </div>
+  );
 }

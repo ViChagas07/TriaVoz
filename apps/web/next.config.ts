@@ -18,6 +18,36 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   output: "standalone", // small production image (see Dockerfile)
   poweredByHeader: false,
+  async redirects() {
+    // The product is intentionally nine routes. Old skeleton URLs keep working for bookmarks.
+    return [
+      { source: "/agenda", destination: "/agendamentos", permanent: true },
+      {
+        source: "/historico",
+        destination: "/agendamentos?tab=history",
+        permanent: true,
+      },
+      {
+        source: "/solicitacoes",
+        destination: "/agendamentos?tab=pending",
+        permanent: true,
+      },
+      {
+        source: "/solicitacoes/:id",
+        destination: "/agendamentos?tab=pending&request=:id",
+        permanent: true,
+      },
+      {
+        source: "/equipe",
+        destination: "/configuracoes?tab=team",
+        permanent: true,
+      },
+      { source: "/agente/opcoes", destination: "/agente", permanent: true },
+      { source: "/agente/saudacao", destination: "/agente", permanent: true },
+      { source: "/agente/testar", destination: "/agente", permanent: true },
+      { source: "/agente/transferencia", destination: "/agente", permanent: true },
+    ];
+  },
   async rewrites() {
     return [{ source: "/api/v1/:path*", destination: `${API_ORIGIN}/api/v1/:path*` }];
   },
