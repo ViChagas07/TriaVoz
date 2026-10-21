@@ -12,7 +12,7 @@
 | F01 Database + RLS + isolation tests | P02 | [x] migration 0001+0002, roles, forced RLS, routing functions, double-booking constraint, `refresh_tokens` + `clinic_settings`, isolation/role suite (mutation-tested), idempotent demo seed, CI green |
 | F02 Backend core | P03 | [x] auth cookies/rotation/reuse/lockout, RBAC, requests+calls+agenda+agent-config+dashboard, SSE, team, blocked numbers, voice session, internal service-request + idempotent book/cancel/reschedule, CI green |
 | F03 Voice agent | P04.1 | [x] live LiveKit Cloud pipeline validated (booking, exact-time confirmed reschedule, cancel, urgency, two-misunderstanding handoff); barge-in/latency/cost stored; SIP transfer code-complete but untested live |
-| F04 Anti-abuse & cost | P05 | [x] gatekeeper (caller/IP/global buckets, blocklists, hidden policy, concurrency, budgets, cost breaker, kill switch, business hours), in-call limits + emergency override, post-call scoring/dedupe, mark-spam expiry + unblock, spike alerts, Redis Lua integration tests, draft CAPTCHA (Turnstile); CI green pending push |
+| F04 Anti-abuse & cost | P05 | [x] gatekeeper (caller/IP/global buckets, blocklists, hidden policy, concurrency, budgets, cost breaker, kill switch, business hours), in-call limits + emergency override, post-call scoring/dedupe, mark-spam expiry + unblock, spike alerts, Redis Lua integration tests, draft CAPTCHA (Turnstile); CI run `39537528564` (run 14) green |
 | F05 Frontend | P06 | [~] Next.js base, design tokens, i18n, route placeholders, StatusBadge · [ ] real pages, demo voice UI |
 | F06 Observability, evals, (RAG) | P07 | [ ] |
 | F07 Tests & E2E | P08 | [ ] |
@@ -43,6 +43,7 @@
 - P05 live protection: `POST /api/v1/voice/session` returns `mode=session` only after the gatekeeper admits; refusals return a fixed message that always includes SAMU 192. The optional HMAC-signed telephony webhook resolves the dialed number and runs the same gatekeeper. Demo caps are the minimum of `clinic_settings` and `TRIAVOZ_DEMO_*`; the worker caps duration with its own ceiling.
 - P05 resilience: LiveKit room creation is wrapped in a 5s timeout + bulkhead + breaker (fails 503 and releases the slot); the worker bounds room connect (10s), session start (20s), greeting (15s), each LLM+TTS turn (12–15s) and internal API calls (8s + bulkhead + breaker), with callback/provider-failure fallbacks documented in ADR 0008. `session.on("error")` fallback is code-complete but the event name carries `TODO(verify-docs)`.
 - P05 NOT validated: a live telephony provider (Twilio signature/TwiML adapter), a live provider-failure drill against Deepgram/LLM/Cartesia, and the dashboard review badge UI (P06). Turnstile is implemented and unit-covered only when configured; no real challenge was run.
+- P05 CI: GitHub Actions run `39537528564` (run 14, commit `2a21003`) passed all four jobs (`api`, `agent`, `web`, `secrets`), including the real-Redis integration tests in the API job.
 - NOT validated live: SIP transfer (no trunk/number), browser UI, Render `/voice/session` (returned 500), and post-call summary content. Two-consecutive-misunderstanding handoff is now verified live.
 
 ## Open decisions / proposals
