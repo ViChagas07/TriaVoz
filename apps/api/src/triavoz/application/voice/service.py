@@ -43,6 +43,7 @@ class VoiceSessionOutcome:
     decision: GateDecision
     session: VoiceSessionResult | None
     policy: ClinicPolicy
+    timezone: str
 
 
 class StartVoiceSession:
@@ -113,7 +114,9 @@ class StartVoiceSession:
             enforce_ip_limit=channel == "web",
         )
         if not decision.allowed:
-            return VoiceSessionOutcome(decision=decision, session=None, policy=policy)
+            return VoiceSessionOutcome(
+                decision=decision, session=None, policy=policy, timezone=ctx["timezone"]
+            )
 
         room_name = f"triavoz-{uuid.uuid4().hex[:16]}"
         try:
@@ -155,6 +158,7 @@ class StartVoiceSession:
             decision=decision,
             session=VoiceSessionResult(str(call_id), room.room_name, room.token, room.url),
             policy=policy,
+            timezone=ctx["timezone"],
         )
 
 

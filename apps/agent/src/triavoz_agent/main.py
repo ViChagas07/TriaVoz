@@ -345,20 +345,40 @@ async def entrypoint(ctx: JobContext) -> None:
             state["interruptions"] += m.num_interruptions
             latency.record("interruption_detection", m.detection_delay)
 
+    async def publish_agent_event(payload: dict[str, Any]) -> None:
+        """Small, PII-free event for the browser demo (tool chips / booking card)."""
+        with contextlib.suppress(Exception):
+            await ctx.room.local_participant.publish_data(
+                json.dumps(payload, ensure_ascii=False).encode(),
+                reliable=True,
+                topic="triavoz.events",
+            )
+
     def on_tools(ev: agents.FunctionToolsExecutedEvent) -> None:
         for call, output in ev.zipped():
+            arguments = redact_tool_arguments(call.arguments)
             add_turn(
                 {
                     "speaker": "tool",
                     "content": "",
                     "tool_name": call.name,
                     "tool_payload": {
-                        "arguments": redact_tool_arguments(call.arguments),
+                        "arguments": arguments,
                         "is_error": bool(output.is_error),
                         "output_chars": len(output.output or ""),
                     },
                 }
             )
+            # Never send names, phone numbers or tool output to the browser.
+            event: dict[str, Any] = {
+                "type": "tool",
+                "name": call.name,
+                "ok": not bool(output.is_error),
+            }
+            starts_at = arguments.get("starts_at")
+            if isinstance(starts_at, str):
+                event["starts_at"] = starts_at
+            asyncio.create_task(publish_agent_event(event))
 
     def on_item(ev: agents.ConversationItemAddedEvent) -> None:
         item = ev.item

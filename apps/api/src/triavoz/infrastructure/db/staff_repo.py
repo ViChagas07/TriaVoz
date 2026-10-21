@@ -7,6 +7,7 @@ use `:param IS NULL OR ...`, so every value remains a bound parameter.
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime
 from typing import Any
 from uuid import UUID
@@ -37,6 +38,247 @@ class PgStaffRepository:
             )
         ).scalar_one()
         return str(value)
+
+    async def get_clinic_settings(self) -> dict[str, Any]:
+        row = (
+            await self._s.execute(
+                text(
+                    "SELECT c.name, c.slug, c.timezone, "
+                    "COALESCE(s.business_hours, NULL) AS business_hours, "
+                    "COALESCE(s.max_call_seconds, 300) AS max_call_seconds, "
+                    "COALESCE(s.max_concurrent_calls, 3) AS max_concurrent_calls, "
+                    "COALESCE(s.daily_minute_budget, 120) AS daily_minute_budget, "
+                    "COALESCE(s.daily_cost_budget_cents, 500) AS daily_cost_budget_cents, "
+                    "COALESCE(s.kill_switch, false) AS kill_switch, "
+                    "COALESCE(s.hidden_caller_policy, 'allow') AS hidden_caller_policy "
+                    "FROM clinics c LEFT JOIN clinic_settings s ON s.clinic_id = c.id "
+                    "WHERE c.id = app_current_clinic_id()"
+                )
+            )
+        ).first()
+        if row is None:
+            raise NotFound("clinic")
+        return _row(row)
+
+    async def update_clinic_settings(
+        self,
+        *,
+        name: str,
+        timezone: str,
+        business_hours: dict[str, Any] | None,
+        max_call_seconds: int,
+        max_concurrent_calls: int,
+        daily_minute_budget: int,
+        daily_cost_budget_cents: int,
+        kill_switch: bool,
+        hidden_caller_policy: str,
+    ) -> dict[str, Any]:
+        await self._s.execute(
+            text(
+                "UPDATE clinics SET name = :name, timezone = :tz WHERE id = app_current_clinic_id()"
+            ),
+            {"name": name, "tz": timezone},
+        )
+        await self._s.execute(
+            text(
+                "INSERT INTO clinic_settings (clinic_id, business_hours, max_call_seconds, "
+                "max_concurrent_calls, daily_minute_budget, daily_cost_budget_cents, kill_switch, "
+                "hidden_caller_policy, updated_at) "
+                "VALUES (app_current_clinic_id(), CAST(:hours AS jsonb), :max_seconds, "
+                ":max_concurrent, :minutes, :cost, :kill, :hidden, now()) "
+                "ON CONFLICT (clinic_id) DO UPDATE SET business_hours = EXCLUDED.business_hours, "
+                "max_call_seconds = EXCLUDED.max_call_seconds, "
+                "max_concurrent_calls = EXCLUDED.max_concurrent_calls, "
+                "daily_minute_budget = EXCLUDED.daily_minute_budget, "
+                "daily_cost_budget_cents = EXCLUDED.daily_cost_budget_cents, "
+                "kill_switch = EXCLUDED.kill_switch, "
+                "hidden_caller_policy = EXCLUDED.hidden_caller_policy, updated_at = now()"
+            ),
+            {
+                "hours": json.dumps(business_hours) if business_hours is not None else None,
+                "max_seconds": max_call_seconds,
+                "max_concurrent": max_concurrent_calls,
+                "minutes": daily_minute_budget,
+                "cost": daily_cost_budget_cents,
+                "kill": kill_switch,
+                "hidden": hidden_caller_policy,
+            },
+        )
+        return await self.get_clinic_settings()
+
+    async def list_services(self) -> list[dict[str, Any]]:
+        rows = await self._s.execute(
+            text(
+                "SELECT id, name, duration_min, price_cents, is_active FROM services "
+                "WHERE clinic_id = app_current_clinic_id() ORDER BY is_active DESC, name"
+            )
+        )
+        return _rows(rows)
+
+    async def create_service(
+        self, *, name: str, duration_min: int, price_cents: int
+    ) -> dict[str, Any]:
+        try:
+            row = (
+                await self._s.execute(
+                    text(
+                        "INSERT INTO services (clinic_id, name, duration_min, price_cents) "
+                        "VALUES (app_current_clinic_id(), :name, :duration, :price) "
+                        "RETURNING id, name, duration_min, price_cents, is_active"
+                    ),
+                    {"name": name, "duration": duration_min, "price": price_cents},
+                )
+            ).first()
+        except IntegrityError as exc:
+            raise Conflict("service_name") from exc
+        if row is None:
+            raise NotFound("service")
+        return _row(row)
+
+    async def update_service(
+        self,
+        service_id: UUID,
+        *,
+        name: str | None,
+        duration_min: int | None,
+        price_cents: int | None,
+        is_active: bool | None,
+    ) -> dict[str, Any] | None:
+        try:
+            row = (
+                await self._s.execute(
+                    text(
+                        "UPDATE services SET name = COALESCE(:name, name), "
+                        "duration_min = COALESCE(:duration, duration_min), "
+                        "price_cents = COALESCE(:price, price_cents), "
+                        "is_active = COALESCE(:active, is_active) "
+                        "WHERE id = :id AND clinic_id = app_current_clinic_id() "
+                        "RETURNING id, name, duration_min, price_cents, is_active"
+                    ),
+                    {
+                        "id": service_id,
+                        "name": name,
+                        "duration": duration_min,
+                        "price": price_cents,
+                        "active": is_active,
+                    },
+                )
+            ).first()
+        except IntegrityError as exc:
+            raise Conflict("service_name") from exc
+        return _row(row) if row else None
+
+    async def deactivate_service(self, service_id: UUID) -> bool:
+        result = await self._s.execute(
+            text(
+                "UPDATE services SET is_active = false WHERE id = :id "
+                "AND clinic_id = app_current_clinic_id()"
+            ),
+            {"id": service_id},
+        )
+        return int(getattr(result, "rowcount", 0) or 0) > 0
+
+    async def list_professionals(self) -> list[dict[str, Any]]:
+        rows = await self._s.execute(
+            text(
+                "SELECT p.id, p.name, p.specialty, p.is_active, "
+                "COALESCE(array_agg(ps.service_id) FILTER (WHERE ps.service_id IS NOT NULL), "
+                "'{}'::uuid[]) AS service_ids "
+                "FROM professionals p LEFT JOIN professional_services ps "
+                "ON ps.professional_id = p.id "
+                "WHERE p.clinic_id = app_current_clinic_id() "
+                "GROUP BY p.id ORDER BY p.is_active DESC, p.name"
+            )
+        )
+        return _rows(rows)
+
+    async def _sync_professional_services(
+        self, professional_id: UUID, service_ids: list[UUID]
+    ) -> None:
+        await self._s.execute(
+            text("DELETE FROM professional_services WHERE professional_id = :id"),
+            {"id": professional_id},
+        )
+        if service_ids:
+            await self._s.execute(
+                text(
+                    "INSERT INTO professional_services (clinic_id, professional_id, service_id) "
+                    "SELECT app_current_clinic_id(), :pid, s.id FROM services s "
+                    "WHERE s.id = ANY(CAST(:ids AS uuid[])) "
+                    "AND s.clinic_id = app_current_clinic_id() ON CONFLICT DO NOTHING"
+                ),
+                {"pid": professional_id, "ids": service_ids},
+            )
+
+    async def _professional_by_id(self, professional_id: UUID) -> dict[str, Any] | None:
+        row = (
+            await self._s.execute(
+                text(
+                    "SELECT p.id, p.name, p.specialty, p.is_active, "
+                    "COALESCE(array_agg(ps.service_id) FILTER "
+                    "(WHERE ps.service_id IS NOT NULL), '{}'::uuid[]) AS service_ids "
+                    "FROM professionals p LEFT JOIN professional_services ps "
+                    "ON ps.professional_id = p.id WHERE p.id = :id "
+                    "AND p.clinic_id = app_current_clinic_id() GROUP BY p.id"
+                ),
+                {"id": professional_id},
+            )
+        ).first()
+        return _row(row) if row else None
+
+    async def create_professional(
+        self, *, name: str, specialty: str | None, service_ids: list[UUID]
+    ) -> dict[str, Any]:
+        professional_id = (
+            await self._s.execute(
+                text(
+                    "INSERT INTO professionals (clinic_id, name, specialty) "
+                    "VALUES (app_current_clinic_id(), :name, :specialty) RETURNING id"
+                ),
+                {"name": name, "specialty": specialty},
+            )
+        ).scalar_one()
+        await self._sync_professional_services(professional_id, service_ids)
+        result = await self._professional_by_id(professional_id)
+        if result is None:
+            raise NotFound("professional")
+        return result
+
+    async def update_professional(
+        self,
+        professional_id: UUID,
+        *,
+        name: str | None,
+        specialty: str | None,
+        service_ids: list[UUID] | None,
+        is_active: bool | None,
+    ) -> dict[str, Any] | None:
+        row = (
+            await self._s.execute(
+                text(
+                    "UPDATE professionals SET name = COALESCE(:name, name), "
+                    "specialty = COALESCE(:specialty, specialty), "
+                    "is_active = COALESCE(:active, is_active) "
+                    "WHERE id = :id AND clinic_id = app_current_clinic_id() RETURNING id"
+                ),
+                {"id": professional_id, "name": name, "specialty": specialty, "active": is_active},
+            )
+        ).first()
+        if row is None:
+            return None
+        if service_ids is not None:
+            await self._sync_professional_services(professional_id, service_ids)
+        return await self._professional_by_id(professional_id)
+
+    async def deactivate_professional(self, professional_id: UUID) -> bool:
+        result = await self._s.execute(
+            text(
+                "UPDATE professionals SET is_active = false WHERE id = :id "
+                "AND clinic_id = app_current_clinic_id()"
+            ),
+            {"id": professional_id},
+        )
+        return int(getattr(result, "rowcount", 0) or 0) > 0
 
     async def list_requests(
         self,
@@ -332,10 +574,10 @@ class PgStaffRepository:
     ) -> list[dict[str, Any]]:
         rows = await self._s.execute(
             text(
-                "SELECT a.id, a.clinic_id, a.starts_at, a.ends_at, a.status, a.customer_name, "
-                "a.customer_phone, a.service_id, a.professional_id, a.created_via, "
-                "s.name AS service_name, p.name AS professional_name FROM appointments a "
-                "JOIN services s ON s.id = a.service_id "
+                "SELECT a.id, a.clinic_id, a.call_id, a.starts_at, a.ends_at, a.status, "
+                "a.customer_name, a.customer_phone, a.service_id, a.professional_id, "
+                "a.created_via, s.name AS service_name, p.name AS professional_name "
+                "FROM appointments a JOIN services s ON s.id = a.service_id "
                 "JOIN professionals p ON p.id = a.professional_id "
                 "WHERE a.starts_at >= :start AND a.starts_at < :end "
                 "AND (CAST(:pid AS uuid) IS NULL OR a.professional_id = CAST(:pid AS uuid)) "
@@ -349,10 +591,10 @@ class PgStaffRepository:
         row = (
             await self._s.execute(
                 text(
-                    "SELECT a.id, a.clinic_id, a.starts_at, a.ends_at, a.status, a.customer_name, "
-                    "a.customer_phone, a.service_id, a.professional_id, a.created_via, "
-                    "s.name AS service_name, p.name AS professional_name FROM appointments a "
-                    "JOIN services s ON s.id = a.service_id "
+                    "SELECT a.id, a.clinic_id, a.call_id, a.starts_at, a.ends_at, a.status, "
+                    "a.customer_name, a.customer_phone, a.service_id, a.professional_id, "
+                    "a.created_via, s.name AS service_name, p.name AS professional_name "
+                    "FROM appointments a JOIN services s ON s.id = a.service_id "
                     "JOIN professionals p ON p.id = a.professional_id WHERE a.id = :id"
                 ),
                 {"id": appointment_id},

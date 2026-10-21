@@ -9,6 +9,50 @@ class StaffRepository(Protocol):
     """Tenant-bound repository for staff operations. RLS is the isolation mechanism."""
 
     async def clinic_timezone(self) -> str: ...
+    async def get_clinic_settings(self) -> dict[str, Any]: ...
+    async def update_clinic_settings(
+        self,
+        *,
+        name: str,
+        timezone: str,
+        business_hours: dict[str, Any] | None,
+        max_call_seconds: int,
+        max_concurrent_calls: int,
+        daily_minute_budget: int,
+        daily_cost_budget_cents: int,
+        kill_switch: bool,
+        hidden_caller_policy: str,
+    ) -> dict[str, Any]: ...
+
+    # Catalog (settings screen)
+    async def list_services(self) -> list[dict[str, Any]]: ...
+    async def create_service(
+        self, *, name: str, duration_min: int, price_cents: int
+    ) -> dict[str, Any]: ...
+    async def update_service(
+        self,
+        service_id: UUID,
+        *,
+        name: str | None,
+        duration_min: int | None,
+        price_cents: int | None,
+        is_active: bool | None,
+    ) -> dict[str, Any] | None: ...
+    async def deactivate_service(self, service_id: UUID) -> bool: ...
+    async def list_professionals(self) -> list[dict[str, Any]]: ...
+    async def create_professional(
+        self, *, name: str, specialty: str | None, service_ids: list[UUID]
+    ) -> dict[str, Any]: ...
+    async def update_professional(
+        self,
+        professional_id: UUID,
+        *,
+        name: str | None,
+        specialty: str | None,
+        service_ids: list[UUID] | None,
+        is_active: bool | None,
+    ) -> dict[str, Any] | None: ...
+    async def deactivate_professional(self, professional_id: UUID) -> bool: ...
 
     # Requests
     async def list_requests(

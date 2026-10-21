@@ -661,3 +661,62 @@ async def test_openapi_is_available_outside_production(client: httpx.AsyncClient
         "/api/v1/voice/session",
     ):
         assert path in paths
+
+
+async def test_clinic_settings_and_catalog_crud(
+    client: httpx.AsyncClient, tenants: dict[str, dict[str, Any]]
+) -> None:
+    a = tenants["A"]
+    admin = await _login(client, a["slug"], "A@example.test")
+    headers = _bearer(admin)
+
+    settings = (await client.get("/api/v1/settings/clinic", headers=headers)).json()
+    assert settings["name"].lower() == "clinic a"
+    saved = await client.put(
+        "/api/v1/settings/clinic",
+        headers=headers,
+        json={
+            "name": settings["name"],
+            "timezone": settings["timezone"],
+            "business_hours": settings["business_hours"],
+            "max_call_seconds": settings["max_call_seconds"],
+            "max_concurrent_calls": settings["max_concurrent_calls"],
+            "daily_minute_budget": settings["daily_minute_budget"],
+            "daily_cost_budget_cents": settings["daily_cost_budget_cents"],
+            "kill_switch": settings["kill_switch"],
+            "hidden_caller_policy": settings["hidden_caller_policy"],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+
+    suffix = uuid.uuid4().hex[:6]
+    service = await client.post(
+        "/api/v1/services",
+        headers=headers,
+        json={"name": f"Servico {suffix}", "duration_min": 30, "price_cents": 12000},
+    )
+    assert service.status_code == 200, service.text
+    service_id = service.json()["id"]
+    patched = await client.patch(
+        f"/api/v1/services/{service_id}", headers=headers, json={"duration_min": 45}
+    )
+    assert patched.status_code == 200 and patched.json()["duration_min"] == 45
+    assert (
+        await client.delete(f"/api/v1/services/{service_id}", headers=headers)
+    ).status_code == 204
+
+    professional = await client.post(
+        "/api/v1/professionals",
+        headers=headers,
+        json={
+            "name": f"Profissional {suffix}",
+            "specialty": "Clinica",
+            "service_ids": [service_id],
+        },
+    )
+    assert professional.status_code == 200, professional.text
+    professional_id = professional.json()["id"]
+    assert service_id in professional.json()["service_ids"]
+    assert (
+        await client.delete(f"/api/v1/professionals/{professional_id}", headers=headers)
+    ).status_code == 204

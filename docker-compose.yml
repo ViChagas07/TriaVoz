@@ -106,6 +106,9 @@ services:
     build:
       context: ./apps/web
       args: { API_ORIGIN: http://api:8000 }
+    environment:
+      API_ORIGIN: http://api:8000
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3300}
     ports: ["${WEB_HOST_PORT:-3000}:3000"]
     depends_on:
       api: { condition: service_healthy }

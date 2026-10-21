@@ -37,6 +37,8 @@ def _fallback_response(outcome: VoiceSessionOutcome) -> VoiceSessionOut:
         reason=decision.reason.value,
         message=decision.message,
         handoff=decision.handoff,
+        max_call_seconds=outcome.policy.max_call_seconds,
+        timezone=outcome.timezone,
     )
 
 
@@ -90,4 +92,6 @@ async def create_voice_session(
         url=result.url,
         mode="session",
         reason=outcome.decision.reason.value,
+        max_call_seconds=outcome.policy.max_call_seconds,
+        timezone=outcome.timezone,
     )

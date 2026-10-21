@@ -6,7 +6,9 @@ from fastapi import Response
 
 from triavoz.config import Settings, get_settings
 
-REFRESH_PATH = "/api/v1/auth"
+# The refresh token is httpOnly + SameSite=Lax; scoping it to "/" lets the Next.js proxy rotate
+# it after the 15-minute access cookie disappears instead of bouncing the user to /login.
+REFRESH_PATH = "/"
 
 
 def set_auth_cookies(

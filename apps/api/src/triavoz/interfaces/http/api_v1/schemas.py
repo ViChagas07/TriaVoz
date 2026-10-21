@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, Field, computed_field
+from pydantic import AwareDatetime, BaseModel, Field, computed_field, field_validator
 
 from triavoz.application.agent_config import AgentConfigSchema
 
@@ -142,6 +142,7 @@ class CallEventOut(BaseModel):
 class AppointmentOut(BaseModel):
     id: UUID
     clinic_id: UUID
+    call_id: UUID | None = None
     starts_at: datetime
     ends_at: datetime
     status: str
@@ -152,6 +153,97 @@ class AppointmentOut(BaseModel):
     professional_id: UUID
     professional_name: str
     created_via: str
+
+
+class BusinessHours(BaseModel):
+    days: list[int] = Field(default_factory=lambda: [1, 2, 3, 4, 5])
+    start: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    end: str = Field(pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+
+    @field_validator("days")
+    @classmethod
+    def _valid_days(cls, value: list[int]) -> list[int]:
+        if not value or any(day < 1 or day > 7 for day in value):
+            raise ValueError("days must contain ISO weekdays 1..7")
+        return sorted(set(value))
+
+
+class ClinicSettingsOut(BaseModel):
+    name: str
+    slug: str
+    timezone: str
+    business_hours: BusinessHours | None
+    max_call_seconds: int
+    max_concurrent_calls: int
+    daily_minute_budget: int
+    daily_cost_budget_cents: int
+    kill_switch: bool
+    hidden_caller_policy: str
+
+
+class ClinicSettingsIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    timezone: str = Field(min_length=1, max_length=80)
+    business_hours: BusinessHours | None = None
+    max_call_seconds: int = Field(ge=30, le=3600)
+    max_concurrent_calls: int = Field(ge=1, le=100)
+    daily_minute_budget: int = Field(ge=0, le=100_000)
+    daily_cost_budget_cents: int = Field(ge=0, le=10_000_000)
+    kill_switch: bool
+    hidden_caller_policy: Literal["allow", "reject"] = "allow"
+
+    @field_validator("timezone")
+    @classmethod
+    def _valid_timezone(cls, value: str) -> str:
+        from zoneinfo import ZoneInfo
+
+        try:
+            ZoneInfo(value)
+        except (KeyError, ValueError) as exc:
+            raise ValueError("unknown IANA timezone") from exc
+        return value
+
+
+class ServiceOut(BaseModel):
+    id: UUID
+    name: str
+    duration_min: int
+    price_cents: int
+    is_active: bool
+
+
+class ServiceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    duration_min: int = Field(ge=1, le=480)
+    price_cents: int = Field(ge=0, le=10_000_000)
+
+
+class ServicePatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    duration_min: int | None = Field(default=None, ge=1, le=480)
+    price_cents: int | None = Field(default=None, ge=0, le=10_000_000)
+    is_active: bool | None = None
+
+
+class ProfessionalOut(BaseModel):
+    id: UUID
+    name: str
+    specialty: str | None
+    is_active: bool
+    service_ids: list[UUID] = Field(default_factory=list)
+
+
+class ProfessionalCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    specialty: str | None = Field(default=None, max_length=120)
+    service_ids: list[UUID] = Field(default_factory=list)
+
+
+class ProfessionalPatch(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    specialty: str | None = Field(default=None, max_length=120)
+    service_ids: list[UUID] | None = None
+    is_active: bool | None = None
 
 
 class AppointmentCreate(BaseModel):
@@ -239,3 +331,5 @@ class VoiceSessionOut(BaseModel):
     reason: str | None = None
     message: str | None = None
     handoff: bool = False
+    max_call_seconds: int | None = None
+    timezone: str | None = None

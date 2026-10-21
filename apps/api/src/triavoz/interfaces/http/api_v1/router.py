@@ -11,6 +11,7 @@ from triavoz.interfaces.http.api_v1 import (
     dashboard,
     events,
     requests,
+    settings,
     team,
     voice,
 )
@@ -25,4 +26,7 @@ router.include_router(dashboard.router)
 router.include_router(events.router)
 router.include_router(team.router)
 router.include_router(blocked.router)
+router.include_router(settings.router)
+router.include_router(settings.services_router)
+router.include_router(settings.professionals_router)
 router.include_router(voice.router)
