@@ -80,8 +80,8 @@ automatically blocks a number: a human marks spam or unblocks it.
 |---|---|---|
 | LiveKit room/token (API) | 5s timeout + bulkhead 10 + breaker 3/15s | 503 `voice_provider_unavailable`; slot released |
 | LiveKit connect (worker) | 10s timeout | job closes; no half-open session |
-| Session start / greeting (STT/LLM/TTS init) | 20s / 15s timeouts | callback request + `provider_failure` end |
-| LLM + TTS turn (`generate_reply`/`say`) | 12–15s timeout | fixed spoken message, then close |
+| Session start / greeting (STT/LLM/TTS init) | 20s / 15s timeouts + bulkhead 4 + breaker 3/15s | callback request + `provider_failure` end |
+| LLM + TTS turn (`generate_reply`/`say`) | 12–15s timeout + bulkhead/breaker | fixed spoken message, then close |
 | Internal API tools (worker) | 8s timeout + bulkhead + breaker | tool error → calm message; handoff path remains |
 | Provider error event | LiveKit Agents error handler | fixed “instabilidade” message + callback + close |
 
