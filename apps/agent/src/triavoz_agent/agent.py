@@ -38,6 +38,8 @@ class CallContext:
         self.handoff_requested = False
         self.handoff_completed = False
         self.handoff_reason: str | None = None
+        self.abusive_language_detected = False
+        self.emergency_detected = False
 
     async def request_handoff(self, reason: str) -> str:
         if self.handoff_requested:

@@ -38,7 +38,8 @@ async def test_requests_are_signed_and_carry_server_side_ids() -> None:
     body = json.loads(seen["body"])
     assert body == {"clinic_id": "clinic-1", "call_id": "call-1"}
     ts = int(seen["headers"][TIMESTAMP_HEADER])
-    assert seen["headers"][SIGNATURE_HEADER] == sign(SECRET, ts, seen["body"])
+    nonce = seen["headers"]["X-Triavoz-Nonce"]
+    assert seen["headers"][SIGNATURE_HEADER] == sign(SECRET, ts, seen["body"], nonce)
 
 
 async def test_api_errors_expose_a_stable_code() -> None:
@@ -71,6 +72,9 @@ def test_cost_estimate_uses_configured_prices_only() -> None:
         tts_provider="cartesia",
         tts_language="pt-BR",
         max_call_seconds=300,
+        max_turns=20,
+        silence_timeout_seconds=15.0,
+        emergency_grace_seconds=20.0,
         price_stt_per_minute_cents=1.0,
         price_llm_per_million_input_tokens_cents=100.0,
         price_llm_per_million_output_tokens_cents=500.0,
@@ -117,6 +121,30 @@ def test_handoff_policy_triggers_after_two_clarifications_and_resets() -> None:
     assert policy.observe_assistant("Não entendi.") is None
     assert policy.observe_assistant("Certo, anotei.") is None
     assert policy.clarify_streak == 0
+
+
+def test_in_call_limits_abuse_warning_then_end_and_max_turns() -> None:
+    abuse = HandoffPolicy(max_turns=50)
+    assert abuse.observe_user("sua idiota") == "abuse"
+    assert abuse.observe_user("vou marcar uma consulta") is None
+    assert abuse.observe_user("cala a boca") == "abuse_final"
+    assert abuse.abuse_strikes == 2
+
+    turns = HandoffPolicy(max_turns=2)
+    assert turns.observe_user("olá") is None
+    assert turns.observe_user("quero marcar") is None
+    assert turns.observe_user("sim") == "max_turns"
+
+
+def test_emergency_overrides_abuse_and_turn_limits() -> None:
+    policy = HandoffPolicy(max_turns=1)
+    assert policy.observe_user("sua idiota") == "abuse"
+    assert policy.observe_user("sim") == "max_turns"
+    assert policy.observe_user("dor no peito e falta de ar") == "urgency"
+    assert policy.emergency is True
+    # Once emergency mode is on, later abuse/turn noise cannot end the call.
+    assert policy.observe_user("idiota") is None
+    assert policy.observe_assistant("Não entendi, pode repetir?") is None
 
 
 def test_turn_latency_computes_time_to_first_audio() -> None:

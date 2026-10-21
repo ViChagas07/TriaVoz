@@ -9,4 +9,9 @@ poetry install
 poetry run python -m triavoz_agent.main dev      # local, against LiveKit (see ../../.env.example)
 ```
 
-Read `../../docs/specs/03-voice-agent.md` before changing anything here.
+Read `../../docs/specs/03-voice-agent.md` and ADR 0008 before changing anything here.
+
+In-call protection (P05): one calm warning for abusive language then the call ends; max turns;
+silence timeout after the greeting; hard duration cap from room metadata; two clarifications →
+handoff. Urgency always wins (SAMU 192) and ignores those limits, with one grace window at the hard
+cap. Provider startup/turn calls are bounded; failures request a callback and end cleanly.

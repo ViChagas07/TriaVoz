@@ -4,6 +4,7 @@ by the TriaVoz API when it created the session — never from the browser or the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -93,7 +94,11 @@ def _livekit_http_url() -> str:
 
 async def entrypoint(ctx: JobContext) -> None:
     cfg = WorkerConfig.from_env()
-    await ctx.connect()
+    try:
+        await asyncio.wait_for(ctx.connect(), timeout=10.0)
+    except TimeoutError:
+        log.error("LiveKit room connect timed out; closing job %s", ctx.room.name)
+        return
     meta: dict[str, Any] = json.loads(ctx.room.metadata or "{}")
     clinic_id, channel = meta.get("clinic_id"), meta.get("channel", "web")
     if not clinic_id:
@@ -134,6 +139,19 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     tz = meta.get("timezone", "America/Bahia")
     agent_cfg: dict[str, Any] = meta.get("agent_config") or {}
+    # The API writes the effective per-clinic cap; never exceed the worker's own hard ceiling.
+    max_call_seconds = min(
+        int(meta.get("max_call_seconds") or cfg.max_call_seconds), cfg.max_call_seconds
+    )
+    max_turns = int(meta.get("max_turns") or cfg.max_turns)
+    silence_timeout = max(
+        5.0, float(meta.get("silence_timeout_seconds") or cfg.silence_timeout_seconds)
+    )
+    emergency_message = str(
+        meta.get("emergency_message")
+        or agent_cfg.get("emergency_message")
+        or "Se for uma emergência, ligue agora para o SAMU, no 192."
+    )
 
     if cfg.tts_provider == "elevenlabs":
         tts: Any = elevenlabs.TTS(
@@ -189,8 +207,16 @@ async def entrypoint(ctx: JobContext) -> None:
     persist_tasks: set[asyncio.Task[None]] = set()
     started = time.monotonic()
     done = asyncio.Event()
-    state = {"seq": 0, "interruptions": 0}
-    policy = HandoffPolicy()
+    state: dict[str, Any] = {
+        "seq": 0,
+        "interruptions": 0,
+        "last_user_at": time.monotonic(),
+        "end_reason": None,
+        "silence_warned": False,
+        "emergency_grace_used": False,
+        "provider_fallback_started": False,
+    }
+    policy = HandoffPolicy(max_turns=max_turns)
 
     async def persist_turn(turn: dict[str, Any]) -> None:
         try:
@@ -208,11 +234,93 @@ async def entrypoint(ctx: JobContext) -> None:
         persist_tasks.add(task)
         task.add_done_callback(persist_tasks.discard)
 
+    async def reply(instructions: str, *, deadline: float = 12.0) -> None:
+        """Bound one LLM + TTS turn (the provider stack is owned by LiveKit Agents)."""
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                session.generate_reply(instructions=instructions), timeout=deadline
+            )
+
     async def trigger_handoff(reason: str, instructions: str) -> None:
         if call.handoff_requested:
             return
         message = await call.request_handoff(reason)
-        await session.generate_reply(instructions=f"{instructions} Diga também: {message}")
+        await reply(f"{instructions} Diga também: {message}")
+
+    async def trigger_emergency() -> None:
+        """Emergency override: speaks SAMU guidance even if a handoff was already requested."""
+        call.emergency_detected = True
+        message = await call.request_handoff("urgency")
+        await reply(
+            "Interrompa o fluxo imediatamente. Avise que a ligação não substitui "
+            f"atendimento de urgência e diga exatamente: {emergency_message} {message}",
+            deadline=15.0,
+        )
+
+    async def warn_abuse() -> None:
+        await reply(
+            "Responda com calma, em uma frase, que a conversa precisa ser respeitosa "
+            "e que você pode encerrar a ligação se isso continuar."
+        )
+
+    async def close_call(reason: str, *, delay: float = 0.0) -> None:
+        if delay:
+            await asyncio.sleep(delay)
+        if done.is_set():
+            return
+        state["end_reason"] = reason
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(session.aclose(), timeout=5.0)
+        done.set()
+
+    async def close_after_handoff(reason: str) -> None:
+        if policy.emergency:
+            return
+        await trigger_handoff(
+            reason,
+            "Explique em uma frase que a equipe vai retornar e que a ligação será encerrada.",
+        )
+        await close_call(reason, delay=4.0)
+
+    async def provider_fallback() -> None:
+        if done.is_set() or state["provider_fallback_started"]:
+            return
+        state["provider_fallback_started"] = True
+        log.error("provider failure clinic=%s call=%s", clinic_id, call_id)
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(
+                session.say(
+                    "Estamos com uma instabilidade técnica. Vou registrar um retorno humano.",
+                    allow_interruptions=False,
+                ),
+                timeout=6.0,
+            )
+        with contextlib.suppress(Exception):
+            await call.request_handoff("provider_failure")
+        await close_call("provider_failure")
+
+    async def silence_watch() -> None:
+        """One warning, then close when the caller goes silent after the greeting."""
+        await asyncio.sleep(silence_timeout)
+        while not done.is_set():
+            if policy.emergency or call.handoff_requested:
+                return
+            idle = time.monotonic() - float(state["last_user_at"])
+            if idle >= silence_timeout:
+                if not state["silence_warned"]:
+                    state["silence_warned"] = True
+                    state["last_user_at"] = time.monotonic()
+                    await reply("Pergunte em uma frase curta se a pessoa ainda está na linha.")
+                else:
+                    log.info("silence timeout clinic=%s call=%s", clinic_id, call_id)
+                    await close_call("silence_timeout")
+                    return
+            await asyncio.sleep(1.0)
+
+    def on_session_error(ev: Any) -> None:
+        # TODO(verify-docs): the `error` event name/shape for livekit-agents 1.8.x.
+        log.error("agent session error clinic=%s call=%s: %s", clinic_id, call_id, ev)
+        asyncio.create_task(provider_fallback())
 
     def on_metrics(ev: agents.MetricsCollectedEvent) -> None:
         m = ev.metrics
@@ -252,19 +360,38 @@ async def entrypoint(ctx: JobContext) -> None:
         text = getattr(item, "text_content", None)
         if role not in ("user", "assistant") or not text:
             return
-        add_turn({"speaker": "patient" if role == "user" else "agent", "content": str(text)})
+        turn: dict[str, Any] = {
+            "speaker": "patient" if role == "user" else "agent",
+            "content": str(text),
+        }
+        # TODO(verify-docs): attribute name for STT confidence in livekit-agents 1.8.x. The API
+        # accepts `stt_confidence` on turns and the scorer penalizes consistently low values.
+        confidence = getattr(item, "transcript_confidence", getattr(item, "confidence", None))
+        if (
+            role == "user"
+            and isinstance(confidence, (int, float))
+            and 0.0 <= float(confidence) <= 1.0
+        ):
+            turn["stt_confidence"] = float(confidence)
+        add_turn(turn)
         if role == "user":
-            reason = policy.observe_user(str(text))
-            if reason == "urgency" and not call.handoff_requested:
-                asyncio.create_task(
-                    trigger_handoff(
-                        "urgency",
-                        "Interrompa o fluxo. Diga para procurar o SAMU 192 imediatamente.",
-                    )
-                )
+            state["last_user_at"] = time.monotonic()
+            state["silence_warned"] = False
+            event = policy.observe_user(str(text))
+            if event == "urgency":
+                asyncio.create_task(trigger_emergency())
+            elif event == "abuse":
+                asyncio.create_task(warn_abuse())
+            elif event == "abuse_final":
+                call.abusive_language_detected = True
+                # Never log the caller's words or number; only the call ids and the event.
+                log.warning("abusive language clinic=%s call=%s", clinic_id, call_id)
+                asyncio.create_task(close_call("abusive_language"))
+            elif event == "max_turns":
+                asyncio.create_task(close_after_handoff("max_turns"))
         if role == "assistant":
-            reason = policy.observe_assistant(str(text))
-            if reason == "misunderstanding" and not call.handoff_requested:
+            event = policy.observe_assistant(str(text))
+            if event == "misunderstanding" and not policy.emergency:
                 asyncio.create_task(
                     trigger_handoff(
                         "misunderstanding",
@@ -275,59 +402,99 @@ async def entrypoint(ctx: JobContext) -> None:
     session.on("metrics_collected", on_metrics)
     session.on("conversation_item_added", on_item)
     session.on("function_tools_executed", on_tools)
+    session.on("error", on_session_error)
     session.on("close", lambda _ev: done.set())
 
     now = datetime.now(ZoneInfo(tz))
     log.info("agent session starting clinic=%s call=%s", clinic_id, call_id)
-    await session.start(
-        room=ctx.room,
-        agent=Receptionist(
-            call,
-            build_instructions(agent_cfg, today_iso=_today_label(now), timezone=tz),
-        ),
-    )
-    log.info("agent session started; speaking greeting")
-    # Direct TTS avoids an LLM cold start on the first audio; the LLM takes over on user turns.
-    await session.say(greeting_text(agent_cfg), allow_interruptions=True, add_to_chat_ctx=True)
+    start_failed = False
+    try:
+        # Bound provider startup: STT/LLM/TTS connections are established here.
+        await asyncio.wait_for(
+            session.start(
+                room=ctx.room,
+                agent=Receptionist(
+                    call,
+                    build_instructions(agent_cfg, today_iso=_today_label(now), timezone=tz),
+                ),
+            ),
+            timeout=20.0,
+        )
+        log.info("agent session started; speaking greeting")
+        # Direct TTS avoids an LLM cold start on the first audio; the LLM takes over on user turns.
+        await asyncio.wait_for(
+            session.say(greeting_text(agent_cfg), allow_interruptions=True, add_to_chat_ctx=True),
+            timeout=15.0,
+        )
+    except Exception:
+        # Fallback: no agent session. Ask for a human callback; the API keeps the call record.
+        log.exception("session start/greeting failed clinic=%s call=%s", clinic_id, call_id)
+        start_failed = True
+        state["end_reason"] = "provider_failure"
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(session.aclose(), timeout=5.0)
+        with contextlib.suppress(Exception):
+            await call.request_handoff("provider_failure")
     log.info("greeting requested")
 
-    try:
-        await asyncio.wait_for(done.wait(), timeout=cfg.max_call_seconds)
-        reason = "closed"
-    except TimeoutError:
-        reason = "max_duration"
-        await session.aclose()
-    finally:
-        await asyncio.gather(*list(persist_tasks), return_exceptions=True)
-        summary = usage.get_summary()
-        usage_data = summary.__dict__.copy()
-        usage_data["interruptions"] = state["interruptions"]
-        usage_data["handoff_reason"] = call.handoff_reason
-        cost = estimate_cost_cents(
-            cfg,
-            stt_seconds=float(usage_data.get("stt_audio_duration", 0.0) or 0.0),
-            llm_input_tokens=int(usage_data.get("llm_prompt_tokens", 0) or 0),
-            llm_output_tokens=int(usage_data.get("llm_completion_tokens", 0) or 0),
-            tts_characters=int(usage_data.get("tts_characters_count", 0) or 0),
-        )
+    # The silence clock starts after the greeting, not when the job was created.
+    state["last_user_at"] = time.monotonic()
+    silence_task = asyncio.create_task(silence_watch()) if not start_failed else None
+    reason = "provider_failure"
+    if not start_failed:
         try:
-            if turns:
-                # Final idempotent flush covers turns whose incremental request was in flight.
-                await api.add_turns(clinic_id, call_id, turns)
-            await api.end_call(
-                clinic_id,
-                call_id,
-                status="transferred" if call.handoff_completed else "completed",
-                end_reason=reason,
-                duration_seconds=int(time.monotonic() - started),
-                usage=usage_data,
-                latency_ms=latency.summary_ms(),
-                cost_cents=cost,
-                handoff_requested=call.handoff_requested,
-                handoff_completed=call.handoff_completed,
-            )
-        finally:
-            await api.aclose()
+            await asyncio.wait_for(done.wait(), timeout=max_call_seconds)
+            reason = str(state["end_reason"] or "closed")
+        except TimeoutError:
+            reason = str(state["end_reason"] or "max_duration")
+            if policy.emergency and not state["emergency_grace_used"]:
+                # Give the SAMU guidance a brief window even when the hard cap was reached.
+                state["emergency_grace_used"] = True
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(done.wait(), timeout=cfg.emergency_grace_seconds)
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(session.aclose(), timeout=5.0)
+    if silence_task is not None:
+        silence_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await silence_task
+    await asyncio.gather(*list(persist_tasks), return_exceptions=True)
+    summary = usage.get_summary()
+    usage_data = summary.__dict__.copy()
+    usage_data["interruptions"] = state["interruptions"]
+    usage_data["handoff_reason"] = call.handoff_reason
+    usage_data["emergency_detected"] = call.emergency_detected
+    cost = estimate_cost_cents(
+        cfg,
+        stt_seconds=float(usage_data.get("stt_audio_duration", 0.0) or 0.0),
+        llm_input_tokens=int(usage_data.get("llm_prompt_tokens", 0) or 0),
+        llm_output_tokens=int(usage_data.get("llm_completion_tokens", 0) or 0),
+        tts_characters=int(usage_data.get("tts_characters_count", 0) or 0),
+    )
+    status = (
+        "rejected"
+        if reason in {"abusive_language", "max_turns", "silence_timeout"}
+        else ("transferred" if call.handoff_completed else "completed")
+    )
+    try:
+        if turns:
+            # Final idempotent flush covers turns whose incremental request was in flight.
+            await api.add_turns(clinic_id, call_id, turns)
+        await api.end_call(
+            clinic_id,
+            call_id,
+            status=status,
+            end_reason=reason,
+            duration_seconds=int(time.monotonic() - started),
+            usage=usage_data,
+            latency_ms=latency.summary_ms(),
+            cost_cents=cost,
+            handoff_requested=call.handoff_requested,
+            handoff_completed=call.handoff_completed,
+            abusive_language_detected=call.abusive_language_detected,
+        )
+    finally:
+        await api.aclose()
 
 
 if __name__ == "__main__":
