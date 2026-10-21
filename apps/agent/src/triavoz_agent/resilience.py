@@ -81,3 +81,27 @@ async def with_timeout(fn: Callable[[], Awaitable[T]], deadline: float) -> T:
         return await asyncio.wait_for(fn(), timeout=deadline)
     except TimeoutError as exc:
         raise ProviderTimeoutError(f"{deadline}s") from exc
+
+
+async def guarded_call(
+    fn: Callable[[], Awaitable[T]],
+    *,
+    breaker: CircuitBreaker | None = None,
+    bulkhead: Bulkhead | None = None,
+    deadline: float,
+) -> T:
+    """Bulkhead -> breaker -> deadline around one provider operation (LLM/TTS/session start)."""
+    if breaker is not None and not breaker.allow():
+        raise CircuitOpenError(breaker.name)
+    try:
+        if bulkhead is not None:
+            result = await bulkhead.call(fn, deadline=deadline)
+        else:
+            result = await with_timeout(fn, deadline)
+    except BaseException:
+        if breaker is not None:
+            breaker.record_failure()
+        raise
+    if breaker is not None:
+        breaker.record_success()
+    return result

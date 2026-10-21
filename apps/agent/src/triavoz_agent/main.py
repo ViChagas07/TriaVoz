@@ -31,6 +31,7 @@ from triavoz_agent.config import WorkerConfig
 from triavoz_agent.handoff import SipHandoff, find_caller_identity
 from triavoz_agent.policy import HandoffPolicy
 from triavoz_agent.prompts import build_instructions, greeting_text
+from triavoz_agent.resilience import Bulkhead, CircuitBreaker, CircuitOpenError, guarded_call
 from triavoz_agent.telemetry import LatencyTracker, TurnLatencyTracker, estimate_cost_cents
 
 log = logging.getLogger("triavoz.agent")
@@ -217,6 +218,8 @@ async def entrypoint(ctx: JobContext) -> None:
         "provider_fallback_started": False,
     }
     policy = HandoffPolicy(max_turns=max_turns)
+    provider_breaker = CircuitBreaker("voice-providers", failure_threshold=3, recovery_timeout=15)
+    provider_bulkhead = Bulkhead("voice-providers", max_concurrency=4, wait_timeout=1.0)
 
     async def persist_turn(turn: dict[str, Any]) -> None:
         try:
@@ -235,11 +238,18 @@ async def entrypoint(ctx: JobContext) -> None:
         task.add_done_callback(persist_tasks.discard)
 
     async def reply(instructions: str, *, deadline: float = 12.0) -> None:
-        """Bound one LLM + TTS turn (the provider stack is owned by LiveKit Agents)."""
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(
-                session.generate_reply(instructions=instructions), timeout=deadline
+        """Bulkhead + breaker + deadline around one LLM + TTS turn."""
+        try:
+            await guarded_call(
+                lambda: session.generate_reply(instructions=instructions),
+                breaker=provider_breaker,
+                bulkhead=provider_bulkhead,
+                deadline=deadline,
             )
+        except CircuitOpenError:
+            asyncio.create_task(provider_fallback())
+        except Exception:
+            log.warning("provider reply failed clinic=%s call=%s", clinic_id, call_id)
 
     async def trigger_handoff(reason: str, instructions: str) -> None:
         if call.handoff_requested:
@@ -410,21 +420,27 @@ async def entrypoint(ctx: JobContext) -> None:
     start_failed = False
     try:
         # Bound provider startup: STT/LLM/TTS connections are established here.
-        await asyncio.wait_for(
-            session.start(
+        await guarded_call(
+            lambda: session.start(
                 room=ctx.room,
                 agent=Receptionist(
                     call,
                     build_instructions(agent_cfg, today_iso=_today_label(now), timezone=tz),
                 ),
             ),
-            timeout=20.0,
+            breaker=provider_breaker,
+            bulkhead=provider_bulkhead,
+            deadline=20.0,
         )
         log.info("agent session started; speaking greeting")
         # Direct TTS avoids an LLM cold start on the first audio; the LLM takes over on user turns.
-        await asyncio.wait_for(
-            session.say(greeting_text(agent_cfg), allow_interruptions=True, add_to_chat_ctx=True),
-            timeout=15.0,
+        await guarded_call(
+            lambda: session.say(
+                greeting_text(agent_cfg), allow_interruptions=True, add_to_chat_ctx=True
+            ),
+            breaker=provider_breaker,
+            bulkhead=provider_bulkhead,
+            deadline=15.0,
         )
     except Exception:
         # Fallback: no agent session. Ask for a human callback; the API keeps the call record.
