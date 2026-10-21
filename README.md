@@ -84,5 +84,12 @@ See [`docs/agent/PROGRESS.md`](docs/agent/PROGRESS.md) — it states exactly wha
 ## LGPD / privacy notes for production
 Health data is sensitive personal data: lawful basis and consent, call-recording notice, data-processing agreements with voice/LLM providers, retention limits, access logging and encryption are required before any real use. This repository ships fictional data only.
 
+## Frontend
+
+Nine routes, bilingual (pt-BR/en), light/dark: `/`, `/demo`, `/login`, `/painel`, `/chamadas`,
+`/chamadas/[id]`, `/agendamentos`, `/agente` (admin), `/configuracoes` (admin). The live demo uses
+`livekit-client` with captions and PII-free tool events; the dashboard uses SSE. See
+`docs/specs/05-frontend-ux.md`, `docs/design/BRAND.md`, and the captured screenshots in `screenshots/`.
+
 ## Next steps
 Phone numbers (Twilio/SIP) and warm human transfer · per-clinic RAG (pgvector + RLS) · WhatsApp reminders · integrations with clinic management systems · billing.

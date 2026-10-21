@@ -56,7 +56,7 @@ Implemented in `apps/api/migrations/sql/0001_initial_schema_rls.sql` and `0002_r
 - Errors: consistent JSON, `404` (not `403`) for another tenant's resources, no internals leaked.
 
 ## 10. Frontend
-Routes: public `/`, `/demo`, `/login`; app `/painel`, `/solicitacoes[/id]`, `/agenda`, `/historico`, `/chamadas[/id]`; admin `/agente/{saudacao,opcoes,transferencia,testar}`, `/equipe`, `/configuracoes`. Real-time via SSE. i18n `next-intl` (pt-BR default, en). Design tokens in `apps/web/src/app/globals.css` (deep teal brand + triage status colors; light/dark). Status = icon + text + color. A11y WCAG AA. SEO/AEO/GEO on the landing (JSON-LD, `llms.txt`).
+Nine routes (P06): public `/`, `/demo`, `/login`; app `/painel`, `/chamadas[/id]`, `/agendamentos`; admin `/agente`, `/configuracoes`. Legacy skeleton URLs redirect in `next.config.ts`. Live voice via `livekit-client` (captions + PII-free tool events); dashboard real-time via SSE. i18n `next-intl` (pt-BR default, en, cookie + `?lang`), route-scoped client messages. Design tokens in `apps/web/src/app/globals.css` and `docs/design/BRAND.md` (deep teal brand + triage status colors; light/dark). Status = icon + text + color. A11y WCAG AA. SEO/AEO/GEO on the landing (metadata, JSON-LD, sitemap/robots, `llms.txt`).
 
 ## 11. Security baseline
 Argon2 · short JWT (15 min) + rotating refresh in `httpOnly` cookies · RBAC enforced in the API · rate limiting (Token Bucket) · HMAC for service calls · strict input validation · CORS closed (same-origin proxy) · security headers · secrets from env · `audit_log` (append-only for the runtime role) · LGPD notes (sensitive health data, consent notice, retention) · gitleaks/pip-audit/npm audit in CI. Prompt-injection and SSRF/XSS/SQLi considerations are part of P09.
