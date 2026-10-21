@@ -9,7 +9,7 @@
 - **The database prevents double booking** (exclusion constraint) — the LLM can never confirm an occupied slot; proven by a concurrent-booking test.
 - **Tenant isolation you can verify**: RLS enabled + forced on every tenant table, four DB roles, SECURITY DEFINER routing, and an isolation/guard test suite that blocks merges (mutation-tested).
 - **Minimum-privilege agent**: it only sees free slots and the caller's own appointments; clinic identity never comes from the browser or the model.
-- **Abuse & cost protection** (gatekeeper, rate limits, circuit breaker, kill switch) so a public demo can't drain credits.
+- **Abuse & cost protection**: a server-side gatekeeper runs before any room or provider credit is spent (per-caller/per-IP/clinic buckets, tenant + global blocklists, hidden-number policy, concurrency, daily minute/cost budgets, Redis cost breaker, kill switch, business hours). Emergency hints and urgency keywords always win and route to SAMU 192. Post-call scoring feeds a human-reviewed spam/unblock loop. See ADR 0008.
 
 ## Architecture
 ```
@@ -41,9 +41,12 @@ flow does not need any other change. PostgreSQL roles and extensions are created
 start by `infra/postgres/init/01-roles.sh`; `migrate` runs once as `triavoz_owner`; the API runs
 as `triavoz_app`.
 
-API tests (need Postgres; see `apps/api/tests/conftest.py` for the DSN env vars):
+API tests (need Postgres; Redis is optional except for the Lua integration tests; see
+`apps/api/tests/conftest.py` for the DSN env vars):
 ```bash
 cd apps/api && poetry install && poetry run pytest
+# Full suite incl. real-Redis Lua validation:
+#   TRIAVOZ_TEST_REDIS_URL=redis://localhost:6379/15 poetry run pytest
 ```
 
 Demo data (3 fictional clinics, including staff users with password `Demo!TriaVoz2026` — **DEV

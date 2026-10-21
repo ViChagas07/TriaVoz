@@ -51,8 +51,8 @@ Implemented in `apps/api/migrations/sql/0001_initial_schema_rls.sql` and `0002_r
 `calls` stores `usage` (jsonb), `latency_ms` (jsonb per stage p50/p95) and `cost_cents`. `refresh_tokens` stores only SHA-256 hashes, a `family_id` for reuse detection, and a composite `(clinic_id, user_id)` FK. `clinic_settings` holds daily minute/cost budgets, concurrency/duration caps, kill switch and transcript retention days.
 
 ## 9. API surface
-- **Internal (HMAC):** `/internal/agent/calls/{start,turns,end}`, `/internal/agent/tools/{list-services,list-slots,book,my-appointments,cancel,reschedule}` — implemented.
-- **Staff (JWT, `/api/v1`):** auth (login with clinic code, refresh, logout, me) · requests (list/filter, detail, assign, complete, mark-spam) · calls (list, detail, turns) · agenda · agent-config (draft/versions/publish/rollback) · dashboard summary · SSE stream · team · blocked-numbers · voice session (`POST /api/v1/voice/session`, public, rate-limited, demo clinic only). — to build.
+- **Internal (HMAC, signed single-use nonce):** `/internal/agent/calls/{start,turns,end}`, `/internal/agent/tools/{list-services,list-slots,book,my-appointments,cancel,reschedule,create-service-request}` and the optional `/internal/agent/telephony/incoming` webhook — implemented.
+- **Staff (JWT, `/api/v1`):** auth (login with clinic code, refresh, logout, me) · requests (list/filter, detail, assign, complete, mark-spam with optional expiry) · calls (list, detail, turns, review flags) · agenda · agent-config (draft/versions/publish/rollback) · dashboard summary · SSE stream · team · blocked-numbers (add/list/delete/unblock) · voice session (`POST /api/v1/voice/session`, public, gatekeeper-protected, demo clinic only). — implemented (frontend P06).
 - Errors: consistent JSON, `404` (not `403`) for another tenant's resources, no internals leaked.
 
 ## 10. Frontend
