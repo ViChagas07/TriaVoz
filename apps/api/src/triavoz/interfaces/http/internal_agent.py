@@ -16,8 +16,13 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from triavoz.application.abuse.alerts import AlertService
+from triavoz.application.abuse.gatekeeper import gatekeeper_for, rate_limits_from_settings
+from triavoz.application.abuse.policy import clinic_policy_from_context
+from triavoz.application.abuse.ports import GateStore
+from triavoz.application.abuse.scoring import score_call
 from triavoz.application.events import EventPublisher
 from triavoz.application.scheduling.use_cases import (
     BookAppointment,
@@ -27,14 +32,26 @@ from triavoz.application.scheduling.use_cases import (
     ListServices,
     RescheduleAppointment,
 )
+from triavoz.application.voice.ports import VoiceRoomService
+from triavoz.application.voice.service import StartVoiceSession
 from triavoz.config import get_settings
+from triavoz.infrastructure.db.abuse_repo import PgAbuseRepository
 from triavoz.infrastructure.db.calls_repo import PgCallRepository
+from triavoz.infrastructure.db.clinic_resolver import RoutingClinicResolver
 from triavoz.infrastructure.db.scheduling_repo import PgSchedulingRepository
 from triavoz.infrastructure.db.session import tenant_session
 from triavoz.infrastructure.db.staff_repo import PgStaffRepository
+from triavoz.infrastructure.db.voice_repo import PgVoiceSessionRepository
+from triavoz.infrastructure.events.redis_events import get_event_bus
 from triavoz.infrastructure.idempotency import IdempotencyStore, get_idempotency_store
 from triavoz.infrastructure.security import hmac_auth
-from triavoz.interfaces.http.deps import get_events_dep
+from triavoz.infrastructure.security.replay_guard import get_replay_guard
+from triavoz.interfaces.http.deps import (
+    get_alert_service,
+    get_events_dep,
+    get_gate_store_dep,
+    get_voice_room_service,
+)
 from triavoz.shared_kernel.errors import (
     DomainError,
     InvalidRequest,
@@ -47,15 +64,22 @@ from triavoz.shared_kernel.errors import (
 async def verify_internal_signature(request: Request) -> None:
     s = get_settings()
     body = await request.body()
+    nonce = request.headers.get(hmac_auth.NONCE_HEADER)
+    signature = request.headers.get(hmac_auth.SIGNATURE_HEADER)
     ok = hmac_auth.verify(
         s.internal_hmac_secret.get_secret_value(),
         request.headers.get(hmac_auth.TIMESTAMP_HEADER),
-        request.headers.get(hmac_auth.SIGNATURE_HEADER),
+        signature,
         body,
         s.internal_hmac_tolerance_seconds,
+        nonce_header=nonce,
     )
-    if not ok:
-        raise HTTPException(status_code=401, detail="invalid signature")
+    if not ok or not nonce or not signature:
+        raise HTTPException(status_code=401, detail="invalid_signature")
+    # The nonce is signed and single-use: a captured request cannot be replayed inside the window.
+    ttl = max(2, s.internal_hmac_tolerance_seconds * 2)
+    if not await get_replay_guard().claim(hmac_auth.replay_key(nonce, signature), ttl):
+        raise HTTPException(status_code=401, detail="replayed_request")
 
 
 router = APIRouter(
@@ -131,6 +155,15 @@ class EndIn(Ctx):
     cost_cents: float = Field(default=0, ge=0)
     handoff_requested: bool = False
     handoff_completed: bool = False
+    abusive_language_detected: bool = False
+
+
+class TelephonyIn(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    to: str = Field(pattern=r"^\+[1-9][0-9]{7,14}$")
+    from_number: str | None = Field(default=None, alias="from", max_length=32)
+    emergency: bool = False
 
 
 def _aware(dt: datetime) -> datetime:
@@ -369,6 +402,68 @@ async def reschedule(
     return result
 
 
+@router.post("/telephony/incoming")
+async def telephony_incoming(
+    body: TelephonyIn,
+    request: Request,
+    store: GateStore = Depends(get_gate_store_dep),
+    alerts: AlertService = Depends(get_alert_service),
+    rooms: VoiceRoomService = Depends(get_voice_room_service),
+) -> dict[str, str | bool | None]:
+    """Optional telephony webhook: resolve the dialed number, run the same gatekeeper.
+
+    A real provider adapter (Twilio signature validation + TwiML) stays behind this endpoint; the
+    internal HMAC keeps it closed until that adapter exists. Emergencies get SAMU guidance even
+    when the number is blocked or the breaker is open.
+    """
+    clinic_id = await RoutingClinicResolver().by_phone(body.to)
+    if clinic_id is None:
+        raise HTTPException(status_code=404, detail="unknown_number")
+    ip = request.client.host if request.client else "telephony"
+    s = get_settings()
+    async with tenant_session(clinic_id) as session:
+        use_case = StartVoiceSession(
+            PgVoiceSessionRepository(session),
+            rooms,
+            PgAbuseRepository(session),
+            store,
+            s,
+            alert_service=alerts,
+        )
+        outcome = await use_case.execute(
+            caller_number=body.from_number,
+            client_ip=ip,
+            ttl_seconds=s.livekit_token_ttl_seconds,
+            channel="phone",
+            emergency=body.emergency,
+            demo_caps=False,
+        )
+    decision = outcome.decision
+    if outcome.session is None:
+        return {
+            "mode": "emergency" if decision.reason.value == "emergency" else "fallback",
+            "reason": decision.reason.value,
+            "message": decision.message,
+            "handoff": decision.handoff,
+            "call_id": None,
+            "room_name": None,
+            "token": None,
+            "url": None,
+        }
+    result = outcome.session
+    await get_event_bus().publish(clinic_id, "call.started", {"call_id": result.call_id})
+    return {
+        "mode": "session",
+        "reason": decision.reason.value,
+        "message": None,
+        "handoff": False,
+        "call_id": result.call_id,
+        "room_name": result.room_name,
+        "token": result.token,
+        "url": result.url,
+    }
+
+
 @router.post("/calls/turns")
 async def add_turns(body: TurnsIn) -> dict[str, int]:
     turns = []
@@ -385,7 +480,13 @@ async def add_turns(body: TurnsIn) -> dict[str, int]:
 
 
 @router.post("/calls/end")
-async def end_call(body: EndIn, events: EventPublisher = Depends(get_events_dep)) -> dict[str, str]:
+async def end_call(
+    body: EndIn,
+    events: EventPublisher = Depends(get_events_dep),
+    store: GateStore = Depends(get_gate_store_dep),
+    alerts: AlertService = Depends(get_alert_service),
+) -> dict[str, str]:
+    s = get_settings()
     async with tenant_session(body.clinic_id) as session:
         await PgCallRepository(session).end(
             body.call_id,
@@ -398,6 +499,46 @@ async def end_call(body: EndIn, events: EventPublisher = Depends(get_events_dep)
             handoff_requested=body.handoff_requested,
             handoff_completed=body.handoff_completed,
         )
+        abuse = PgAbuseRepository(session)
+        inputs = await abuse.scoring_inputs(
+            body.call_id, abusive_language=body.abusive_language_detected
+        )
+        if inputs is not None:
+            result = score_call(inputs, review_threshold=s.abuse_review_threshold)
+            await abuse.apply_call_score(
+                body.call_id,
+                score=result.score,
+                flags=result.flags,
+                needs_review=result.needs_review,
+            )
+        ctx = await PgVoiceSessionRepository(session).voice_context()
+        if ctx is not None:
+            channel = await PgCallRepository(session).channel(body.call_id)
+            policy = clinic_policy_from_context(
+                ctx,
+                demo_hard_max_call_seconds=(
+                    s.demo_hard_max_call_seconds if channel == "web" else None
+                ),
+                demo_daily_minute_budget=(s.demo_daily_minute_budget if channel == "web" else None),
+                demo_daily_cost_budget_cents=(
+                    s.demo_daily_cost_budget_cents if channel == "web" else None
+                ),
+            )
+            gate = gatekeeper_for(
+                clinic_id=ctx["clinic_id"],
+                policy=policy,
+                repo=abuse,
+                store=store,
+                rate_limits=rate_limits_from_settings(s),
+                cooldown_seconds=s.cost_breaker_cooldown_seconds,
+                failure_threshold=s.cost_breaker_failure_threshold,
+                alerts=alerts,
+            )
+            await gate.release(str(body.call_id))
+            await gate.on_call_ended(
+                cost_cents=body.cost_cents,
+                duration_seconds=body.duration_seconds or 0,
+            )
     await events.publish(body.clinic_id, "call.ended", {"call_id": str(body.call_id)})
     return {"status": "ok"}
 

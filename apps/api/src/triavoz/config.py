@@ -43,8 +43,40 @@ class Settings(BaseSettings):
     livekit_api_key: str = "devkey"
     livekit_api_secret: SecretStr = SecretStr("secret")
     livekit_token_ttl_seconds: int = 600
+    # Public web demo: per-IP bucket (kept under the historical name for compatibility).
     voice_rate_capacity: int = 10
     voice_rate_refill_per_second: float = 10 / 3600
+    # Per-caller bucket (same E.164) and clinic-wide bucket (all callers/IPs).
+    voice_caller_capacity: int = 3
+    voice_caller_refill_per_second: float = 3 / 3600
+    voice_global_capacity: int = 60
+    voice_global_refill_per_second: float = 60 / 3600
+
+    # Anti-abuse / demo hardening.
+    demo_hard_max_call_seconds: int = 300
+    demo_daily_minute_budget: int = 120
+    demo_daily_cost_budget_cents: int = 500
+    demo_max_turns: int = 20
+    demo_silence_timeout_seconds: float = 15.0
+    abuse_review_threshold: int = 50
+    cost_breaker_cooldown_seconds: int = 300
+    cost_breaker_failure_threshold: int = 1
+
+    # Spike alerts (log by default; e-mail when the SMTP settings are present).
+    alert_calls_per_hour: int = 100
+    alert_cost_cents_per_hour: int = 2000
+    alert_prank_flags_per_hour: int = 5
+    alerts_email: str | None = None
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
+
+    # Optional Cloudflare Turnstile challenge for the public demo (disabled when unset).
+    turnstile_secret: SecretStr | None = None
+    turnstile_verify_url: str = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
 
     # SSE heartbeat (seconds); the stream is served by Redis pub/sub when available.
     sse_heartbeat_seconds: int = 15

@@ -71,6 +71,7 @@ class RateLimiter(Protocol):
 
 class ClinicResolver(Protocol):
     async def by_slug(self, slug: str) -> UUID | None: ...
+    async def by_phone(self, e164: str) -> UUID | None: ...
 
 
 class AccessTokenIssuer(Protocol):

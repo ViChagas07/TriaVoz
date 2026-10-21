@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import time
 from typing import Any
 
@@ -20,10 +21,12 @@ pytestmark = pytest.mark.db
 def _signed(body: dict[str, Any]) -> tuple[bytes, dict[str, str]]:
     raw = json.dumps(body).encode()
     ts = int(time.time())
-    sig = hmac_auth.sign(get_settings().internal_hmac_secret.get_secret_value(), ts, raw)
+    nonce = secrets.token_hex(16)
+    sig = hmac_auth.sign(get_settings().internal_hmac_secret.get_secret_value(), ts, raw, nonce)
     return raw, {
         "Content-Type": "application/json",
         hmac_auth.TIMESTAMP_HEADER: str(ts),
+        hmac_auth.NONCE_HEADER: nonce,
         hmac_auth.SIGNATURE_HEADER: sig,
     }
 
@@ -54,6 +57,18 @@ async def test_internal_routes_reject_missing_or_bad_signature(
     assert (
         await client.post("/internal/agent/tools/list-services", content=raw, headers=headers)
     ).status_code == 401
+
+
+async def test_replayed_signed_request_is_rejected(
+    client: httpx.AsyncClient, tenants: dict[str, dict[str, Any]]
+) -> None:
+    body = {"clinic_id": str(tenants["A"]["clinic"]), "call_id": str(tenants["A"]["call"])}
+    raw, headers = _signed(body)
+    first = await client.post("/internal/agent/tools/list-services", content=raw, headers=headers)
+    assert first.status_code == 200
+    replay = await client.post("/internal/agent/tools/list-services", content=raw, headers=headers)
+    assert replay.status_code == 401
+    assert replay.json()["detail"] == "replayed_request"
 
 
 async def test_full_voice_booking_flow_over_http(

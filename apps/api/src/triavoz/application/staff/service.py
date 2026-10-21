@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
+from triavoz.application.abuse.alerts import AlertService
 from triavoz.application.auth.ports import PasswordHasher
 from triavoz.application.events import EventPublisher
 from triavoz.application.staff.ports import CallSummaryGenerator, StaffRepository
@@ -20,11 +21,13 @@ class StaffService:
         events: EventPublisher,
         hasher: PasswordHasher,
         summary_generator: CallSummaryGenerator,
+        alerts: AlertService | None = None,
     ) -> None:
         self._repo = repo
         self._events = events
         self._hasher = hasher
         self._summary = summary_generator
+        self._alerts = alerts
 
     async def update_request(
         self,
@@ -79,8 +82,10 @@ class StaffService:
         )
         return updated
 
-    async def mark_spam(self, request_id: UUID, *, actor_id: UUID) -> dict[str, Any]:
-        updated = await self._repo.mark_request_spam(request_id)
+    async def mark_spam(
+        self, request_id: UUID, *, actor_id: UUID, expires_in_days: int | None = None
+    ) -> dict[str, Any]:
+        updated = await self._repo.mark_request_spam(request_id, expires_in_days=expires_in_days)
         if updated is None:
             raise NotFound("request")
         await self._repo.add_request_event(
@@ -89,6 +94,8 @@ class StaffService:
         await self._events.publish(
             updated["clinic_id"], "request.spam", {"request_id": str(request_id)}
         )
+        if self._alerts is not None:
+            await self._alerts.record_prank_flag(updated["clinic_id"])
         return updated
 
     async def create_user(
@@ -136,8 +143,20 @@ class StaffService:
         )
         return user
 
-    async def add_blocked(self, *, e164: str, reason: str | None, actor_id: UUID) -> dict[str, Any]:
-        blocked = await self._repo.add_blocked(e164=e164, reason=reason, source="manual")
+    async def add_blocked(
+        self,
+        *,
+        e164: str,
+        reason: str | None,
+        actor_id: UUID,
+        expires_in_days: int | None = None,
+    ) -> dict[str, Any]:
+        blocked = await self._repo.add_blocked(
+            e164=e164,
+            reason=reason,
+            source="manual",
+            expires_in_days=expires_in_days,
+        )
         await self._repo.add_audit(
             action="blocked.add",
             resource_type="blocked_number",
@@ -148,11 +167,18 @@ class StaffService:
         return blocked
 
     async def delete_blocked(self, blocked_id: UUID, *, actor_id: UUID) -> None:
+        await self._remove_block(blocked_id, actor_id=actor_id, action="blocked.delete")
+
+    async def unblock(self, blocked_id: UUID, *, actor_id: UUID) -> None:
+        """Explicit human override: the "unblock" action in the feedback loop."""
+        await self._remove_block(blocked_id, actor_id=actor_id, action="blocked.unblock")
+
+    async def _remove_block(self, blocked_id: UUID, *, actor_id: UUID, action: str) -> None:
         deleted = await self._repo.delete_blocked(blocked_id)
         if not deleted:
             raise NotFound("blocked_number")
         await self._repo.add_audit(
-            action="blocked.delete",
+            action=action,
             resource_type="blocked_number",
             resource_id=str(blocked_id),
             user_id=actor_id,

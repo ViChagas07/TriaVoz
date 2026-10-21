@@ -18,19 +18,33 @@ SECRET = "unit-test-secret"
 def test_hmac_roundtrip_and_tamper_detection() -> None:
     ts = int(time.time())
     body = b'{"clinic_id":"x"}'
-    sig = hmac_auth.sign(SECRET, ts, body)
-    assert hmac_auth.verify(SECRET, str(ts), sig, body, tolerance_seconds=60)
-    assert not hmac_auth.verify(SECRET, str(ts), sig, body + b" ", tolerance_seconds=60)
-    assert not hmac_auth.verify("other-secret", str(ts), sig, body, tolerance_seconds=60)
+    nonce = "nonce-1"
+    sig = hmac_auth.sign(SECRET, ts, body, nonce)
+    assert hmac_auth.verify(SECRET, str(ts), sig, body, tolerance_seconds=60, nonce_header=nonce)
+    assert not hmac_auth.verify(
+        SECRET, str(ts), sig, body + b" ", tolerance_seconds=60, nonce_header=nonce
+    )
+    assert not hmac_auth.verify(
+        "other-secret", str(ts), sig, body, tolerance_seconds=60, nonce_header=nonce
+    )
     assert not hmac_auth.verify(SECRET, None, sig, body, tolerance_seconds=60)
-    assert not hmac_auth.verify(SECRET, "not-a-number", sig, body, tolerance_seconds=60)
+    assert not hmac_auth.verify(
+        SECRET, "not-a-number", sig, body, tolerance_seconds=60, nonce_header=nonce
+    )
+    # The nonce is part of the signed message: swapping it invalidates the signature.
+    assert not hmac_auth.verify(
+        SECRET, str(ts), sig, body, tolerance_seconds=60, nonce_header="other-nonce"
+    )
 
 
 def test_hmac_rejects_replayed_old_timestamp() -> None:
     ts = int(time.time()) - 3600
     body = b"{}"
-    sig = hmac_auth.sign(SECRET, ts, body)
-    assert not hmac_auth.verify(SECRET, str(ts), sig, body, tolerance_seconds=60)
+    nonce = "nonce-2"
+    sig = hmac_auth.sign(SECRET, ts, body, nonce)
+    assert not hmac_auth.verify(
+        SECRET, str(ts), sig, body, tolerance_seconds=60, nonce_header=nonce
+    )
 
 
 def test_password_hash_verifies_only_the_right_password() -> None:

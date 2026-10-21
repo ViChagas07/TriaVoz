@@ -15,6 +15,11 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
     env:
       PGHOST: localhost
       PGPASSWORD: postgres
@@ -44,6 +49,7 @@ jobs:
           TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
           TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
           TRIAVOZ_TEST_OPS_DSN: postgresql://triavoz_ops:ci-ops@localhost:5432/triavoz
+          TRIAVOZ_TEST_REDIS_URL: redis://localhost:6379/15
         run: poetry run pytest -q
       - run: pip install pip-audit && poetry export --without-hashes -f requirements.txt | pip-audit -r /dev/stdin
         continue-on-error: true   # TODO(P09): make blocking once the baseline is clean

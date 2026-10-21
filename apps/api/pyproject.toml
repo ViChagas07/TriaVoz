@@ -35,7 +35,10 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 pythonpath = ["src"]
-markers = ["db: needs the PostgreSQL test database (see tests/conftest.py)"]
+markers = [
+    "db: needs the PostgreSQL test database (see tests/conftest.py)",
+    "redis: needs a real Redis (TRIAVOZ_TEST_REDIS_URL)",
+]
 
 [tool.ruff]
 line-length = 100

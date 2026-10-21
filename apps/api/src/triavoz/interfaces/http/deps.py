@@ -7,23 +7,30 @@ import jwt
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from triavoz.application.abuse.alerts import AlertService
+from triavoz.application.abuse.ports import GateStore
 from triavoz.application.auth.ports import AuthRepository, ClinicResolver, RateLimiter
 from triavoz.application.auth.service import AuthService
 from triavoz.application.events import EventPublisher
 from triavoz.application.staff.ports import CallSummaryGenerator, StaffRepository
 from triavoz.application.staff.service import StaffService
 from triavoz.application.voice.ports import VoiceRoomService
+from triavoz.application.voice.resilient import ResilientVoiceRoomService
 from triavoz.config import get_settings
+from triavoz.infrastructure.alerts import build_alert_service
 from triavoz.infrastructure.db.auth_repo import PgAuthRepository
 from triavoz.infrastructure.db.clinic_resolver import RoutingClinicResolver
 from triavoz.infrastructure.db.session import tenant_session
 from triavoz.infrastructure.db.staff_repo import PgStaffRepository
 from triavoz.infrastructure.events.redis_events import RedisEventBus, get_event_bus
+from triavoz.infrastructure.rate_limit.gate_store import get_gate_store
 from triavoz.infrastructure.rate_limit.limiter import get_limiter
 from triavoz.infrastructure.security.adapters import Argon2PasswordHasher, decode_principal
 from triavoz.infrastructure.security.tokens import Principal
+from triavoz.infrastructure.security.turnstile import TurnstileVerifier
 from triavoz.infrastructure.summary import UnconfiguredCallSummaryGenerator
 from triavoz.infrastructure.voice.livekit_service import LiveKitVoiceService
+from triavoz.shared_kernel.resilience import Bulkhead, CircuitBreaker
 
 
 def client_ip(request: Request) -> str:
@@ -117,22 +124,43 @@ def get_summary_generator() -> CallSummaryGenerator:
     return UnconfiguredCallSummaryGenerator()
 
 
+@lru_cache
+def get_alert_service() -> AlertService:
+    return build_alert_service(get_settings())
+
+
 def get_staff_service(
     repo: StaffRepository = Depends(get_staff_repo),
     events: EventPublisher = Depends(get_events_dep),
+    alerts: AlertService = Depends(get_alert_service),
 ) -> StaffService:
-    return StaffService(repo, events, get_password_hasher(), get_summary_generator())
+    return StaffService(repo, events, get_password_hasher(), get_summary_generator(), alerts=alerts)
 
 
 @lru_cache
 def get_voice_room_service() -> VoiceRoomService:
     s = get_settings()
-    return LiveKitVoiceService(
+    livekit = LiveKitVoiceService(
         http_url=s.livekit_http_url,
         public_url=s.livekit_public_url,
         api_key=s.livekit_api_key,
         api_secret=s.livekit_api_secret.get_secret_value(),
     )
+    return ResilientVoiceRoomService(
+        livekit,
+        breaker=CircuitBreaker("livekit", failure_threshold=3, recovery_timeout=15),
+        bulkhead=Bulkhead("livekit", max_concurrency=10, wait_timeout=2),
+        timeout_seconds=5.0,
+    )
+
+
+def get_gate_store_dep() -> GateStore:
+    return get_gate_store()
+
+
+@lru_cache
+def get_turnstile_verifier() -> TurnstileVerifier:
+    return TurnstileVerifier(get_settings())
 
 
 def get_demo_clinic_slug() -> str:

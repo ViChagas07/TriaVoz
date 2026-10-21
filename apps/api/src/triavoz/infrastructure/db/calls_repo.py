@@ -40,6 +40,14 @@ class PgCallRepository:
             raise NotFound("call")
         return str(row)
 
+    async def channel(self, call_id: UUID) -> str:
+        row = (
+            await self._s.execute(text("SELECT channel FROM calls WHERE id = :id"), {"id": call_id})
+        ).scalar()
+        if not row:
+            raise NotFound("call")
+        return str(row)
+
     async def add_turns(self, clinic_id: UUID, call_id: UUID, turns: list[dict[str, Any]]) -> None:
         for t in turns:
             await self._s.execute(

@@ -28,7 +28,10 @@ async def add_blocked(
     principal: Principal = Depends(require_admin),
 ) -> BlockedOut:
     blocked = await service.add_blocked(
-        e164=body.e164, reason=body.reason, actor_id=principal.user_id
+        e164=body.e164,
+        reason=body.reason,
+        actor_id=principal.user_id,
+        expires_in_days=body.expires_in_days,
     )
     return BlockedOut.model_validate(blocked)
 
@@ -40,4 +43,15 @@ async def delete_blocked(
     principal: Principal = Depends(require_admin),
 ) -> Response:
     await service.delete_blocked(blocked_id, actor_id=principal.user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{blocked_id}/unblock", status_code=status.HTTP_204_NO_CONTENT)
+async def unblock(
+    blocked_id: UUID,
+    service: StaffService = Depends(get_staff_service),
+    principal: Principal = Depends(require_admin),
+) -> Response:
+    """Human override for the feedback loop: remove a block (manual or auto spam)."""
+    await service.unblock(blocked_id, actor_id=principal.user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

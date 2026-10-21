@@ -30,6 +30,10 @@ if APP_DSN:  # must happen before triavoz.config is first imported/cached
         "postgresql://", "postgresql+asyncpg://"
     )
 
+# Integration tests share the tenant stores in a dedicated Redis DB when one is provided.
+if os.environ.get("TRIAVOZ_TEST_REDIS_URL"):
+    os.environ["TRIAVOZ_REDIS_URL"] = os.environ["TRIAVOZ_TEST_REDIS_URL"]
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     if HAVE_DB:

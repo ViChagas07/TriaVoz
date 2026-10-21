@@ -11,6 +11,7 @@ from triavoz.application.staff.service import StaffService
 from triavoz.infrastructure.security.tokens import Principal
 from triavoz.interfaces.http.api_v1.schemas import (
     AssignIn,
+    MarkSpamIn,
     RequestDetailOut,
     RequestListOut,
     RequestOut,
@@ -113,8 +114,13 @@ async def complete_request(
 @router.post("/{request_id}/mark-spam", response_model=RequestOut)
 async def mark_spam(
     request_id: UUID,
+    body: MarkSpamIn | None = None,
     service: StaffService = Depends(get_staff_service),
     principal: Principal = Depends(current_principal),
 ) -> RequestOut:
-    updated = await service.mark_spam(request_id, actor_id=principal.user_id)
+    updated = await service.mark_spam(
+        request_id,
+        actor_id=principal.user_id,
+        expires_in_days=body.expires_in_days if body else None,
+    )
     return RequestOut.model_validate(updated)

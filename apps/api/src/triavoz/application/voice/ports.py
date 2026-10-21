@@ -25,5 +25,12 @@ class VoiceRoomService(Protocol):
 
 class VoiceSessionRepository(Protocol):
     async def voice_context(self) -> dict[str, Any] | None: ...
-    async def create_call(self, *, room_name: str, caller_number: str) -> UUID: ...
+    async def create_call(
+        self,
+        *,
+        call_id: UUID,
+        room_name: str,
+        caller_number: str | None,
+        channel: str,
+    ) -> UUID: ...
     async def fail_call(self, call_id: UUID) -> None: ...

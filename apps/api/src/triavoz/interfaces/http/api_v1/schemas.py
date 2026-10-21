@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, computed_field
 
 from triavoz.application.agent_config import AgentConfigSchema
 
@@ -52,8 +52,15 @@ class RequestOut(BaseModel):
     assigned_to: UUID | None
     assigned_to_name: str | None
     call_id: UUID | None
+    suspicion_flags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def needs_review(self) -> bool:
+        """Dashboard badge data: a human should look at spam or flagged requests."""
+        return self.status == "spam" or bool(self.suspicion_flags)
 
 
 class RequestEventOut(BaseModel):
@@ -96,6 +103,8 @@ class CallOut(BaseModel):
     duration_seconds: int | None
     summary: str | None
     abuse_score: int
+    suspicion_flags: list[str] = Field(default_factory=list)
+    needs_review: bool = False
     handoff_requested: bool
     handoff_completed: bool
     cost_cents: float
@@ -186,6 +195,11 @@ class TeamUserCreate(BaseModel):
 class BlockedCreate(BaseModel):
     e164: str = Field(pattern=r"^\+[1-9][0-9]{7,14}$")
     reason: str | None = Field(default=None, max_length=200)
+    expires_in_days: int | None = Field(default=None, ge=1, le=3650)
+
+
+class MarkSpamIn(BaseModel):
+    expires_in_days: int | None = Field(default=None, ge=1, le=3650)
 
 
 class BlockedOut(BaseModel):
@@ -210,10 +224,18 @@ class DashboardOut(BaseModel):
 class VoiceSessionIn(BaseModel):
     caller_number: str = Field(pattern=r"^\+[1-9][0-9]{7,14}$")
     clinic_code: str | None = Field(default=None, max_length=40)
+    # The caller can declare an emergency before the room exists. This only routes to the SAMU
+    # message/handoff; it never bypasses a limit to spend credits.
+    emergency_hint: bool = False
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class VoiceSessionOut(BaseModel):
-    call_id: str
-    room_name: str
-    token: str
-    url: str
+    call_id: str | None = None
+    room_name: str | None = None
+    token: str | None = None
+    url: str | None = None
+    mode: Literal["session", "fallback", "emergency"] = "session"
+    reason: str | None = None
+    message: str | None = None
+    handoff: bool = False

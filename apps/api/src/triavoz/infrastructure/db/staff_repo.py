@@ -55,8 +55,8 @@ class PgStaffRepository:
             text(
                 "SELECT r.id, r.clinic_id, r.type, r.title, r.description, r.status, "
                 "r.priority, r.patient_name, r.patient_phone, r.requested_date, r.due_date, "
-                "r.assigned_to, u.full_name AS assigned_to_name, r.call_id, r.created_at, "
-                "r.updated_at FROM service_requests r "
+                "r.assigned_to, u.full_name AS assigned_to_name, r.call_id, r.suspicion_flags, "
+                "r.created_at, r.updated_at FROM service_requests r "
                 "LEFT JOIN clinic_users u ON u.id = r.assigned_to "
                 "WHERE (CAST(:status AS text) IS NULL OR r.status = CAST(:status AS text)) "
                 "AND (CAST(:type AS text) IS NULL OR r.type = CAST(:type AS text)) "
@@ -88,8 +88,8 @@ class PgStaffRepository:
                 text(
                     "SELECT r.id, r.clinic_id, r.type, r.title, r.description, r.status, "
                     "r.priority, r.patient_name, r.patient_phone, r.requested_date, r.due_date, "
-                    "r.assigned_to, u.full_name AS assigned_to_name, r.call_id, r.created_at, "
-                    "r.updated_at FROM service_requests r "
+                    "r.assigned_to, u.full_name AS assigned_to_name, r.call_id, r.suspicion_flags, "
+                    "r.created_at, r.updated_at FROM service_requests r "
                     "LEFT JOIN clinic_users u ON u.id = r.assigned_to WHERE r.id = :id"
                 ),
                 {"id": request_id},
@@ -170,7 +170,9 @@ class PgStaffRepository:
         ).first()
         return await self.get_request(request_id) if row else None
 
-    async def mark_request_spam(self, request_id: UUID) -> dict[str, Any] | None:
+    async def mark_request_spam(
+        self, request_id: UUID, *, expires_in_days: int | None = None
+    ) -> dict[str, Any] | None:
         row = (
             await self._s.execute(
                 text(
@@ -195,11 +197,15 @@ class PgStaffRepository:
         if phone:
             inserted = await self._s.execute(
                 text(
-                    "INSERT INTO blocked_numbers (clinic_id, e164, reason, source) "
-                    "VALUES (app_current_clinic_id(), :e164, 'marked_spam', 'auto_spam_flag') "
-                    "ON CONFLICT DO NOTHING RETURNING id"
+                    "INSERT INTO blocked_numbers (clinic_id, e164, reason, source, expires_at) "
+                    "VALUES (app_current_clinic_id(), :e164, 'marked_spam', 'auto_spam_flag', "
+                    "CASE WHEN CAST(:days AS integer) IS NULL THEN NULL "
+                    "ELSE now() + (CAST(:days AS integer) * interval '1 day') END) "
+                    "ON CONFLICT (coalesce(clinic_id, "
+                    "'00000000-0000-0000-0000-000000000000'::uuid), e164) "
+                    "DO UPDATE SET expires_at = EXCLUDED.expires_at RETURNING id"
                 ),
-                {"e164": str(phone)},
+                {"e164": str(phone), "days": expires_in_days},
             )
             added = inserted.first() is not None
         request = await self.get_request(request_id)
@@ -259,8 +265,8 @@ class PgStaffRepository:
         rows = await self._s.execute(
             text(
                 "SELECT id, clinic_id, channel, room_name, caller_number, started_at, ended_at, "
-                "status, end_reason, duration_seconds, summary, abuse_score, handoff_requested, "
-                "handoff_completed, cost_cents FROM calls "
+                "status, end_reason, duration_seconds, summary, abuse_score, suspicion_flags, "
+                "handoff_requested, handoff_completed, cost_cents FROM calls "
                 "WHERE (CAST(:status AS text) IS NULL OR status = CAST(:status AS text)) "
                 "AND (CAST(:day AS date) IS NULL OR started_at::date = CAST(:day AS date)) "
                 "AND (CAST(:cursor_ts AS timestamptz) IS NULL OR (started_at, id) < "
@@ -283,8 +289,8 @@ class PgStaffRepository:
                 text(
                     "SELECT id, clinic_id, channel, room_name, caller_number, started_at, "
                     "ended_at, status, end_reason, duration_seconds, summary, abuse_score, "
-                    "handoff_requested, handoff_completed, usage, latency_ms, cost_cents "
-                    "FROM calls WHERE id = :id"
+                    "suspicion_flags, handoff_requested, handoff_completed, usage, latency_ms, "
+                    "cost_cents FROM calls WHERE id = :id"
                 ),
                 {"id": call_id},
             )
@@ -506,16 +512,25 @@ class PgStaffRepository:
         )
         return _rows(rows)
 
-    async def add_blocked(self, *, e164: str, reason: str | None, source: str) -> dict[str, Any]:
+    async def add_blocked(
+        self,
+        *,
+        e164: str,
+        reason: str | None,
+        source: str,
+        expires_in_days: int | None = None,
+    ) -> dict[str, Any]:
         row = (
             await self._s.execute(
                 text(
-                    "INSERT INTO blocked_numbers (clinic_id, e164, reason, source) "
-                    "VALUES (app_current_clinic_id(), :e164, :reason, :source) "
+                    "INSERT INTO blocked_numbers (clinic_id, e164, reason, source, expires_at) "
+                    "VALUES (app_current_clinic_id(), :e164, :reason, :source, "
+                    "CASE WHEN CAST(:days AS integer) IS NULL THEN NULL "
+                    "ELSE now() + (CAST(:days AS integer) * interval '1 day') END) "
                     "ON CONFLICT DO NOTHING "
                     "RETURNING id, e164, reason, source, created_at, expires_at"
                 ),
-                {"e164": e164, "reason": reason, "source": source},
+                {"e164": e164, "reason": reason, "source": source, "days": expires_in_days},
             )
         ).first()
         if row is None:
@@ -606,6 +621,21 @@ class PgStaffRepository:
         ).scalar()
         if not caller:
             raise NotFound("call")
+        # Dedupe identical requests from the same number inside a short window. A repeated ask is
+        # one piece of work, not two; the action itself is still idempotent by Idempotency-Key.
+        existing = (
+            await self._s.execute(
+                text(
+                    "SELECT id FROM service_requests WHERE patient_phone = :phone "
+                    "AND type = :type AND lower(btrim(title)) = lower(btrim(:title)) "
+                    "AND created_at >= now() - interval '10 minutes' AND status <> 'spam' "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
+                {"phone": caller, "type": type_, "title": title},
+            )
+        ).scalar()
+        if existing is not None:
+            return UUID(str(existing))
         request_id = (
             await self._s.execute(
                 text(

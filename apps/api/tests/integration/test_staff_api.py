@@ -8,6 +8,7 @@ path is covered too.
 from __future__ import annotations
 
 import json
+import secrets
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -135,10 +136,12 @@ def _signed(
 ) -> tuple[bytes, dict[str, str]]:
     raw = json.dumps(body).encode()
     ts = int(time.time())
-    sig = hmac_auth.sign(get_settings().internal_hmac_secret.get_secret_value(), ts, raw)
+    nonce = secrets.token_hex(16)
+    sig = hmac_auth.sign(get_settings().internal_hmac_secret.get_secret_value(), ts, raw, nonce)
     headers = {
         "Content-Type": "application/json",
         hmac_auth.TIMESTAMP_HEADER: str(ts),
+        hmac_auth.NONCE_HEADER: nonce,
         hmac_auth.SIGNATURE_HEADER: sig,
         **(extra or {}),
     }

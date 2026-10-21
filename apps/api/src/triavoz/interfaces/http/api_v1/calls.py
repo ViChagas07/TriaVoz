@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from triavoz.application.staff.ports import StaffRepository
 from triavoz.application.staff.service import StaffService
+from triavoz.config import get_settings
 from triavoz.infrastructure.security.tokens import Principal
 from triavoz.interfaces.http.api_v1.schemas import (
     CallDetailOut,
@@ -49,7 +50,14 @@ async def list_calls(
     next_cursor = (
         encode_cursor(page[-1]["started_at"], page[-1]["id"]) if has_more and page else None
     )
-    return CallListOut(items=[CallOut.model_validate(r) for r in page], next_cursor=next_cursor)
+    threshold = get_settings().abuse_review_threshold
+    return CallListOut(
+        items=[
+            CallOut.model_validate({**r, "needs_review": int(r["abuse_score"]) >= threshold})
+            for r in page
+        ],
+        next_cursor=next_cursor,
+    )
 
 
 @router.get("/{call_id}", response_model=CallDetailOut)
@@ -57,7 +65,10 @@ async def get_call(call_id: UUID, repo: StaffRepository = Depends(get_staff_repo
     call = await repo.get_call(call_id)
     if call is None:
         raise HTTPException(status_code=404, detail="not_found")
-    return CallDetailOut.model_validate(call)
+    threshold = get_settings().abuse_review_threshold
+    return CallDetailOut.model_validate(
+        {**call, "needs_review": int(call["abuse_score"]) >= threshold}
+    )
 
 
 @router.get("/{call_id}/turns", response_model=list[CallTurnOut])
