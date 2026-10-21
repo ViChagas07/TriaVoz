@@ -50,6 +50,9 @@
 - Post-call summaries are wired behind `CallSummaryGenerator` but the shipped implementation is a stub; the endpoint returns 503 until a reviewed provider/prompt/cost guard exists (P07).
 - ADR 0007 records the voice provider choices, turn tuning, latency target, cost basis and handoff design. The supplied ElevenLabs key must be replaced (401); the demo falls back to LiveKit Inference/Cartesia.
 - **Credentials supplied in chat are not committed**; `.env` is ignored. Rotate every exposed key before making the repository/service public.
+- P04 task 7 staff-join evaluation: LiveKit room-join tokens, participant update/remove and
+  `AgentSession.aclose()` are verified in `livekit-api` 1.2.x. The MVP keeps the callback + polite
+  close fallback; the dashboard voice UI/token handshake is deferred to P06/P09 (design in ADR 0007).
 
 ## Blockers
 - (none)

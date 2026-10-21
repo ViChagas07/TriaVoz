@@ -40,13 +40,28 @@ persisted from `function_tools_executed` with `tool_name` and a redacted payload
 phone, description/reason removed; output content never stored, only length/error).
 
 ## Handoff
-- Web demo: `request_human_handoff` creates a `callback` service request tied to the caller's phone
-  and returns a polite fallback message; the call records `handoff_requested=true`.
+- Web demo (chosen MVP): `request_human_handoff` creates a `callback` service request tied to the
+  caller's phone and returns a polite fallback message; the call records `handoff_requested=true`.
 - Urgency keywords are detected server-side (fail-open): the agent speaks the SAMU 192 message and
   requests handoff; the normal booking flow is not blocked.
 - SIP/phone: `SipHandoff` uses `LiveKitAPI.sip.transfer_sip_participant` with
   `TransferSIPParticipantRequest` (python `livekit-api` 1.2.x). It is implemented behind
   `TRIAVOZ_HANDOFF_SIP_URI` but **not exercised live** because no SIP trunk/number is configured.
+
+### Staff joins the same room (evaluated, deferred)
+Current official/installed APIs make this feasible:
+- `AccessToken(...).with_grants(VideoGrants(room_join=True, room=<room>, can_publish=True,
+  can_subscribe=True))` for a staff participant.
+- `LiveKitAPI.room.list_participants/update_participant/remove_participant` for moderation and
+  `AgentSession.aclose()` for the agent to step out.
+
+It is not implemented in P04 because the dashboard has no voice UI yet (P06), and live staff
+joining needs a scoped authenticated token endpoint, clinic ownership checks, consent/recording
+policy and a deterministic agent-step-out handshake. Design for P06/P09:
+`POST /api/v1/calls/{id}/handoff-token` (staff auth, own clinic, call must have
+`handoff_requested=true`) returns a short staff token; the worker detects the `staff-*` participant
+and closes the agent session; the endpoint sets `handoff_completed=true` only after the staff
+participant joins. The callback + polite close remains the implemented fallback until then.
 
 ## P04.1 quality pass
 - Exact-time reschedule verified: appointment moved **10:00 → 10:30 local**; the agent restated the
