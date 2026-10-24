@@ -20,3 +20,5 @@ Persist `call_turns` (patient/agent/tool), `call_events`, `usage`, **latency per
 
 ## Evals (P07)
 Scripted "simulated patient" scenarios: happy path booking, slot taken then alternative, cancel, reschedule, wrong-owner cancel attempt, prompt-injection attempt, out-of-scope request, urgency, silence, abuse. Metrics: task success, no-hallucinated-slot rate, tool-error recovery, handoff correctness.
+
+Implemented in `apps/api/evals` (`make evals`): deterministic text harness against the real HMAC tools and a real test DB, artifacts in `apps/api/evals/results/`, CI gate on zero hallucinated slots. See `docs/evals.md`.

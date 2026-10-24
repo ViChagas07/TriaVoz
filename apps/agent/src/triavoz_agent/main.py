@@ -29,7 +29,14 @@ from triavoz_agent.agent import CallContext, Receptionist
 from triavoz_agent.api_client import ApiError, TriaVozApi
 from triavoz_agent.config import WorkerConfig
 from triavoz_agent.handoff import SipHandoff, find_caller_identity
-from triavoz_agent.policy import HandoffPolicy
+from triavoz_agent.observability import (
+    bind_call_context,
+    capture_exception,
+    configure_logging,
+    init_sentry,
+    setup_tracing,
+)
+from triavoz_agent.policy import HandoffPolicy, SilencePolicy
 from triavoz_agent.prompts import build_instructions, greeting_text
 from triavoz_agent.resilience import Bulkhead, CircuitBreaker, CircuitOpenError, guarded_call
 from triavoz_agent.telemetry import LatencyTracker, TurnLatencyTracker, estimate_cost_cents
@@ -95,6 +102,9 @@ def _livekit_http_url() -> str:
 
 async def entrypoint(ctx: JobContext) -> None:
     cfg = WorkerConfig.from_env()
+    configure_logging(cfg)
+    init_sentry(cfg)
+    setup_tracing(cfg)
     try:
         await asyncio.wait_for(ctx.connect(), timeout=10.0)
     except TimeoutError:
@@ -115,6 +125,7 @@ async def entrypoint(ctx: JobContext) -> None:
         if meta.get("call_id")
         else await api.start_call(clinic_id, channel, ctx.room.name, meta.get("caller_number"))
     )
+    bind_call_context(clinic_id=clinic_id, call_id=call_id)
 
     handoff_uri = os.environ.get("TRIAVOZ_HANDOFF_SIP_URI", "").strip()
 
@@ -213,11 +224,11 @@ async def entrypoint(ctx: JobContext) -> None:
         "interruptions": 0,
         "last_user_at": time.monotonic(),
         "end_reason": None,
-        "silence_warned": False,
         "emergency_grace_used": False,
         "provider_fallback_started": False,
     }
     policy = HandoffPolicy(max_turns=max_turns)
+    silence_policy = SilencePolicy(silence_timeout)
     provider_breaker = CircuitBreaker("voice-providers", failure_threshold=3, recovery_timeout=15)
     provider_bulkhead = Bulkhead("voice-providers", max_concurrency=4, wait_timeout=1.0)
 
@@ -248,7 +259,8 @@ async def entrypoint(ctx: JobContext) -> None:
             )
         except CircuitOpenError:
             asyncio.create_task(provider_fallback())
-        except Exception:
+        except Exception as exc:
+            capture_exception(exc)
             log.warning("provider reply failed clinic=%s call=%s", clinic_id, call_id)
 
     async def trigger_handoff(reason: str, instructions: str) -> None:
@@ -316,15 +328,14 @@ async def entrypoint(ctx: JobContext) -> None:
             if policy.emergency or call.handoff_requested:
                 return
             idle = time.monotonic() - float(state["last_user_at"])
-            if idle >= silence_timeout:
-                if not state["silence_warned"]:
-                    state["silence_warned"] = True
-                    state["last_user_at"] = time.monotonic()
-                    await reply("Pergunte em uma frase curta se a pessoa ainda está na linha.")
-                else:
-                    log.info("silence timeout clinic=%s call=%s", clinic_id, call_id)
-                    await close_call("silence_timeout")
-                    return
+            action = silence_policy.evaluate(idle)
+            if action == "warn":
+                state["last_user_at"] = time.monotonic()
+                await reply("Pergunte em uma frase curta se a pessoa ainda está na linha.")
+            elif action == "close":
+                log.info("silence timeout clinic=%s call=%s", clinic_id, call_id)
+                await close_call("silence_timeout")
+                return
             await asyncio.sleep(1.0)
 
     def on_session_error(ev: Any) -> None:
@@ -406,7 +417,7 @@ async def entrypoint(ctx: JobContext) -> None:
         add_turn(turn)
         if role == "user":
             state["last_user_at"] = time.monotonic()
-            state["silence_warned"] = False
+            silence_policy.note_activity()
             event = policy.observe_user(str(text))
             if event == "urgency":
                 asyncio.create_task(trigger_emergency())
@@ -462,8 +473,9 @@ async def entrypoint(ctx: JobContext) -> None:
             bulkhead=provider_bulkhead,
             deadline=15.0,
         )
-    except Exception:
+    except Exception as exc:
         # Fallback: no agent session. Ask for a human callback; the API keeps the call record.
+        capture_exception(exc)
         log.exception("session start/greeting failed clinic=%s call=%s", clinic_id, call_id)
         start_failed = True
         state["end_reason"] = "provider_failure"
@@ -500,6 +512,8 @@ async def entrypoint(ctx: JobContext) -> None:
     usage_data["interruptions"] = state["interruptions"]
     usage_data["handoff_reason"] = call.handoff_reason
     usage_data["emergency_detected"] = call.emergency_detected
+    usage_data["tool_errors"] = call.tool_errors
+    usage_data["slot_taken_errors"] = call.slot_taken_errors
     cost = estimate_cost_cents(
         cfg,
         stt_seconds=float(usage_data.get("stt_audio_duration", 0.0) or 0.0),

@@ -40,6 +40,9 @@ class CallContext:
         self.handoff_reason: str | None = None
         self.abusive_language_detected = False
         self.emergency_detected = False
+        # PII-free counters persisted with the call and shown on the dashboard.
+        self.tool_errors = 0
+        self.slot_taken_errors = 0
 
     async def request_handoff(self, reason: str) -> str:
         if self.handoff_requested:
@@ -81,6 +84,9 @@ class Receptionist(Agent):  # type: ignore[misc]
         try:
             return await self._c.api.tool(name, self._c.clinic_id, self._c.call_id, **kwargs)
         except ApiError as exc:
+            self._c.tool_errors += 1
+            if exc.code in {"slot_taken", "slot_unavailable"}:
+                self._c.slot_taken_errors += 1
             raise ToolError(_FRIENDLY.get(exc.code, "Não consegui concluir agora.")) from exc
 
     @function_tool
@@ -138,7 +144,7 @@ class Receptionist(Agent):  # type: ignore[misc]
 
     @function_tool
     async def list_my_appointments(self, context: RunContext) -> list[dict[str, Any]]:
-        """List the caller's own upcoming appointments (only those tied to the caller's phone)."""
+        """List the caller's own upcoming appointments (verified phone or browser identity)."""
         return list(await self._call("my-appointments"))
 
     @function_tool

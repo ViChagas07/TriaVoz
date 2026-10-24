@@ -34,7 +34,7 @@ async def get_clinic_settings(
 async def update_clinic_settings(
     body: ClinicSettingsIn,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> ClinicSettingsOut:
     # WHY: keeping operational limits in the same transaction as the clinic name prevents a
     # half-saved settings screen; the gatekeeper reads this row on the next call.
@@ -49,6 +49,13 @@ async def update_clinic_settings(
         kill_switch=body.kill_switch,
         hidden_caller_policy=body.hidden_caller_policy,
     )
+    await repo.add_audit(
+        action="settings.update",
+        resource_type="clinic",
+        resource_id=str(principal.clinic_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     return ClinicSettingsOut.model_validate(settings)
 
 
@@ -61,13 +68,19 @@ async def list_services(repo: StaffRepository = Depends(get_staff_repo)) -> list
 async def create_service(
     body: ServiceCreate,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> ServiceOut:
-    return ServiceOut.model_validate(
-        await repo.create_service(
-            name=body.name, duration_min=body.duration_min, price_cents=body.price_cents
-        )
+    created = await repo.create_service(
+        name=body.name, duration_min=body.duration_min, price_cents=body.price_cents
     )
+    await repo.add_audit(
+        action="service.create",
+        resource_type="service",
+        resource_id=str(created["id"]),
+        user_id=principal.user_id,
+        ip=None,
+    )
+    return ServiceOut.model_validate(created)
 
 
 @services_router.patch("/{service_id}", response_model=ServiceOut)
@@ -75,7 +88,7 @@ async def update_service(
     service_id: UUID,
     body: ServicePatch,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> ServiceOut:
     if not body.model_fields_set:
         raise HTTPException(status_code=422, detail="empty_patch")
@@ -88,6 +101,13 @@ async def update_service(
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="not_found")
+    await repo.add_audit(
+        action="service.update",
+        resource_type="service",
+        resource_id=str(service_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     return ServiceOut.model_validate(updated)
 
 
@@ -95,10 +115,17 @@ async def update_service(
 async def deactivate_service(
     service_id: UUID,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> None:
     if not await repo.deactivate_service(service_id):
         raise HTTPException(status_code=404, detail="not_found")
+    await repo.add_audit(
+        action="service.deactivate",
+        resource_type="service",
+        resource_id=str(service_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
 
 
 @professionals_router.get("", response_model=list[ProfessionalOut])
@@ -112,13 +139,19 @@ async def list_professionals(
 async def create_professional(
     body: ProfessionalCreate,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> ProfessionalOut:
-    return ProfessionalOut.model_validate(
-        await repo.create_professional(
-            name=body.name, specialty=body.specialty, service_ids=body.service_ids
-        )
+    created = await repo.create_professional(
+        name=body.name, specialty=body.specialty, service_ids=body.service_ids
     )
+    await repo.add_audit(
+        action="professional.create",
+        resource_type="professional",
+        resource_id=str(created["id"]),
+        user_id=principal.user_id,
+        ip=None,
+    )
+    return ProfessionalOut.model_validate(created)
 
 
 @professionals_router.patch("/{professional_id}", response_model=ProfessionalOut)
@@ -126,7 +159,7 @@ async def update_professional(
     professional_id: UUID,
     body: ProfessionalPatch,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> ProfessionalOut:
     if not body.model_fields_set:
         raise HTTPException(status_code=422, detail="empty_patch")
@@ -139,6 +172,13 @@ async def update_professional(
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="not_found")
+    await repo.add_audit(
+        action="professional.update",
+        resource_type="professional",
+        resource_id=str(professional_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     return ProfessionalOut.model_validate(updated)
 
 
@@ -146,7 +186,14 @@ async def update_professional(
 async def deactivate_professional(
     professional_id: UUID,
     repo: StaffRepository = Depends(get_staff_repo),
-    _: Principal = Depends(require_admin),
+    principal: Principal = Depends(require_admin),
 ) -> None:
     if not await repo.deactivate_professional(professional_id):
         raise HTTPException(status_code=404, detail="not_found")
+    await repo.add_audit(
+        action="professional.deactivate",
+        resource_type="professional",
+        resource_id=str(professional_id),
+        user_id=principal.user_id,
+        ip=None,
+    )

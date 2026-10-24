@@ -122,6 +122,8 @@ async def seed_clinic(label: str) -> dict[str, Any]:
               INSERT INTO blocked_numbers (id, clinic_id, e164, source)
                 VALUES ('{ids["blocked"]}', '{c}', '+5571000000001', 'manual');
               INSERT INTO audit_log (clinic_id, action, resource_type) VALUES ('{c}', 'seed', 'test');
+              INSERT INTO gatekeeper_block_stats (clinic_id, day, reason, count)
+                VALUES ('{c}', (now() AT TIME ZONE 'America/Bahia')::date, 'rate_limited', 1);
             """)
     finally:
         await conn.close()
@@ -136,6 +138,35 @@ async def drop_clinic(clinic_id: uuid.UUID) -> None:
             await conn.execute("DELETE FROM clinics WHERE id = $1", clinic_id)
     finally:
         await conn.close()
+
+
+async def set_password(clinic_id: uuid.UUID, user_id: uuid.UUID, password: str) -> None:
+    """Set a login password through the owner role; used by tests that need a real login."""
+    from triavoz.infrastructure.security.passwords import hash_password
+
+    conn = await asyncpg.connect(OWNER_DSN)
+    try:
+        async with conn.transaction():
+            await _set_ctx(conn, clinic_id)
+            await conn.execute(
+                "UPDATE clinic_users SET password_hash = $1 WHERE id = $2",
+                hash_password(password),
+                user_id,
+            )
+    finally:
+        await conn.close()
+
+
+@pytest.fixture
+async def isolated_clinic() -> AsyncIterator[dict[str, Any]]:
+    """A fresh clinic per test, removed after it. Prevents cross-test slot/login interference."""
+    if not HAVE_DB:
+        pytest.skip("no test database")
+    clinic = await seed_clinic("isolated")
+    try:
+        yield clinic
+    finally:
+        await drop_clinic(clinic["clinic"])
 
 
 @pytest.fixture(scope="session")

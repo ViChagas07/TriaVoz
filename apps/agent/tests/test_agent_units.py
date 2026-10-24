@@ -3,12 +3,13 @@ from typing import Any
 
 import httpx
 import pytest
+from livekit.agents import ToolError
 
-from triavoz_agent.agent import CallContext
+from triavoz_agent.agent import CallContext, Receptionist
 from triavoz_agent.api_client import SIGNATURE_HEADER, TIMESTAMP_HEADER, ApiError, TriaVozApi, sign
 from triavoz_agent.config import WorkerConfig
 from triavoz_agent.main import redact_tool_arguments
-from triavoz_agent.policy import HandoffPolicy
+from triavoz_agent.policy import HandoffPolicy, SilencePolicy
 from triavoz_agent.prompts import build_greeting_instructions, build_instructions
 from triavoz_agent.telemetry import (
     LatencyTracker,
@@ -47,6 +48,15 @@ async def test_api_errors_expose_a_stable_code() -> None:
     with pytest.raises(ApiError) as exc:
         await api.tool("book", "c", "k")
     assert (exc.value.status, exc.value.code) == (409, "slot_taken")
+
+
+async def test_reserved_server_ids_cannot_be_overridden_by_tool_arguments() -> None:
+    api = _client(lambda req: httpx.Response(200, json={}))
+    with pytest.raises(ApiError) as exc:
+        await api.tool("book", "clinic-real", "call-real", clinic_id="clinic-other")
+    assert (exc.value.status, exc.value.code) == (422, "reserved_tool_argument")
+    with pytest.raises(ApiError):
+        await api.tool("book", "clinic-real", "call-real", call_id="call-other")
 
 
 def test_percentiles_and_latency_summary() -> None:
@@ -155,6 +165,31 @@ def test_turn_latency_computes_time_to_first_audio() -> None:
     summary = tracker.latency.summary_ms()
     assert summary["time_to_first_audio"]["p50"] == 800.0
     assert summary["llm_ttft"]["p50"] == 400.0
+
+
+async def test_receptionist_counts_tool_errors_and_slot_taken() -> None:
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path.endswith("/book"):
+            return httpx.Response(409, json={"detail": "slot_taken"})
+        return httpx.Response(200, json=[])
+
+    api = _client(handler)
+    context = CallContext(api, "clinic-1", "call-1")
+    agent = Receptionist(context, "test")
+    with pytest.raises(ToolError):
+        await agent._call("book")
+    assert context.tool_errors == 1
+    assert context.slot_taken_errors == 1
+
+
+def test_silence_policy_warns_once_then_closes_and_resets() -> None:
+    policy = SilencePolicy(timeout_seconds=2.0)
+    assert policy.evaluate(1.9) is None
+    assert policy.evaluate(2.0) == "warn"
+    assert policy.evaluate(3.0) == "close"
+    policy.note_activity()
+    assert policy.warned is False
+    assert policy.evaluate(1.0) is None
 
 
 async def test_web_handoff_records_callback_and_reports_fallback() -> None:

@@ -309,6 +309,13 @@ class DashboardOut(BaseModel):
     handoffs_today: int
     handoff_rate: float
     cost_today_cents: float
+    avg_duration_seconds: float
+    cost_per_call_cents: float
+    cost_per_minute_cents: float
+    tool_errors_today: int
+    slot_taken_today: int
+    slot_taken_rate: float
+    gatekeeper_blocks_today: int
     latency_p50_ms: dict[str, float]
     latency_p95_ms: dict[str, float]
 

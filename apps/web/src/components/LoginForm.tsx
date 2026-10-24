@@ -3,7 +3,7 @@
 import { ArrowRight, Building2, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { clsx } from "clsx";
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from "@/lib/demo-accounts";
 
@@ -17,6 +17,11 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    setHydrated(true);
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,6 +94,8 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
 
       <form
         onSubmit={onSubmit}
+        method="post"
+        data-hydrated={hydrated ? "true" : "false"}
         className="rounded-2xl border border-border bg-surface p-6 shadow-card sm:p-8"
         aria-describedby={error ? "login-error" : undefined}
       >
@@ -173,7 +180,7 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
 
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !hydrated}
           className={clsx(
             "mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong",
             submitting && "cursor-wait opacity-70",

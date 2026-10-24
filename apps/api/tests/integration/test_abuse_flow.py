@@ -28,7 +28,7 @@ from triavoz.main import create_app
 
 pytestmark = pytest.mark.db
 
-PASSWORD = "PwnedPassw0rd!"
+PASSWORD = "TestPassw0rd!"
 
 
 class FakeRooms:

@@ -9,10 +9,12 @@ never be readable by JavaScript.
 
 ## Decision
 - **Access token:** 15-minute HS256 JWT, returned in JSON and also set as the `triavoz_access`
-  cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production, path `/`). The cookie exists so SSE and
+  cookie (`HttpOnly`, `SameSite=Lax`, `Secure` in production, path `/`; `__Host-` prefixed in production). The cookie exists so SSE and
   same-origin navigations authenticate without putting the token in a query string.
-- **Refresh token:** opaque, 30 days, `HttpOnly`, `SameSite=Lax`, path `/api/v1/auth` (only the auth
-  endpoints receive it). The database stores only its SHA-256 hash.
+- **Refresh token:** opaque, 30 days, `HttpOnly`, `SameSite=Lax`, path `/` so the Next.js proxy can
+  rotate it during a protected navigation. In production both cookies use the `__Host-` prefix
+  (`Secure`, `Path=/`, no `Domain`), which browsers enforce against subdomain shadowing. The database
+  stores only its SHA-256 hash.
 - **Rotation/reuse:** every refresh rotates the token inside the same `family_id`. A revoked token
   presented again returns 401 **and commits a family-wide revocation** before the response. The
   family revocation is deliberately returned as an outcome and executed by the caller after the

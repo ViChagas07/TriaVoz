@@ -14,8 +14,20 @@ export async function generateMetadata(): Promise<Metadata> {
 
 function safeNext(value: string | string[] | undefined): string {
   if (typeof value !== "string") return "/painel";
+  // Only a single-slash, same-origin path is allowed. Backslashes, encoded slashes and control
+  // characters are rejected so a crafted `?next=` cannot become an open redirect.
   if (!value.startsWith("/") || value.startsWith("//")) return "/painel";
-  return value;
+  if (value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return "/painel";
+  try {
+    const resolved = new URL(value, "https://triavoz.invalid");
+    if (resolved.origin !== "https://triavoz.invalid") return "/painel";
+    if (!resolved.pathname.startsWith("/") || resolved.pathname.startsWith("//")) {
+      return "/painel";
+    }
+    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+  } catch {
+    return "/painel";
+  }
 }
 
 export default async function LoginPage({

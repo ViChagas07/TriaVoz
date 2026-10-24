@@ -19,13 +19,22 @@ class PgCallRepository:
     async def start(
         self, *, clinic_id: UUID, channel: str, room_name: str | None, caller_number: str | None
     ) -> UUID:
+        # Internal starts come from the trusted worker. A phone caller number is provider-supplied;
+        # a web caller started here has no browser identity, so it cannot self-manage appointments.
+        verified = channel == "phone" and bool(caller_number)
         new_id = (
             await self._s.execute(
                 text(
-                    "INSERT INTO calls (clinic_id, channel, room_name, caller_number) "
-                    "VALUES (:cid, :ch, :room, :caller) RETURNING id"
+                    "INSERT INTO calls (clinic_id, channel, room_name, caller_number, "
+                    "caller_verified) VALUES (:cid, :ch, :room, :caller, :verified) RETURNING id"
                 ),
-                {"cid": clinic_id, "ch": channel, "room": room_name, "caller": caller_number},
+                {
+                    "cid": clinic_id,
+                    "ch": channel,
+                    "room": room_name,
+                    "caller": caller_number,
+                    "verified": verified,
+                },
             )
         ).scalar_one()
         return UUID(str(new_id))
@@ -39,6 +48,25 @@ class PgCallRepository:
         if not row:
             raise NotFound("call")
         return str(row)
+
+    async def caller_ownership(self, call_id: UUID) -> tuple[str | None, bool, bytes | None]:
+        row = (
+            await self._s.execute(
+                text(
+                    "SELECT caller_number, caller_verified, caller_identity_hash "
+                    "FROM calls WHERE id = :id"
+                ),
+                {"id": call_id},
+            )
+        ).first()
+        if row is None:
+            raise NotFound("call")
+        identity = row.caller_identity_hash
+        return (
+            str(row.caller_number) if row.caller_number else None,
+            bool(row.caller_verified),
+            bytes(identity) if identity is not None else None,
+        )
 
     async def channel(self, call_id: UUID) -> str:
         row = (

@@ -32,6 +32,14 @@ class WorkerConfig:
     price_llm_per_million_input_tokens_cents: float
     price_llm_per_million_output_tokens_cents: float
     price_tts_per_thousand_chars_cents: float
+    # Observability is opt-in; structured logs are the default.
+    log_format: str = "json"
+    sentry_dsn: str | None = None
+    sentry_traces_sample_rate: float = 0.0
+    sentry_release: str | None = None
+    otel_exporter_endpoint: str | None = None
+    otel_service_name: str = "triavoz-voice-worker"
+    otel_sample_ratio: float = 1.0
 
     @classmethod
     def from_env(cls) -> WorkerConfig:
@@ -49,6 +57,13 @@ class WorkerConfig:
             max_turns=int(os.environ.get("TRIAVOZ_MAX_TURNS", "20")),
             silence_timeout_seconds=_f("TRIAVOZ_SILENCE_TIMEOUT_SECONDS", 15.0),
             emergency_grace_seconds=_f("TRIAVOZ_EMERGENCY_GRACE_SECONDS", 20.0),
+            log_format=os.environ.get("TRIAVOZ_LOG_FORMAT", "json"),
+            sentry_dsn=os.environ.get("TRIAVOZ_SENTRY_DSN") or None,
+            sentry_traces_sample_rate=_f("TRIAVOZ_SENTRY_TRACES_SAMPLE_RATE"),
+            sentry_release=os.environ.get("TRIAVOZ_SENTRY_RELEASE") or None,
+            otel_exporter_endpoint=os.environ.get("TRIAVOZ_OTEL_EXPORTER_ENDPOINT") or None,
+            otel_service_name=os.environ.get("TRIAVOZ_OTEL_SERVICE_NAME", "triavoz-voice-worker"),
+            otel_sample_ratio=_f("TRIAVOZ_OTEL_SAMPLE_RATIO", 1.0),
             price_stt_per_minute_cents=_f("TRIAVOZ_PRICE_STT_PER_MIN_CENTS"),
             price_llm_per_million_input_tokens_cents=_f("TRIAVOZ_PRICE_LLM_IN_PER_M_CENTS"),
             price_llm_per_million_output_tokens_cents=_f("TRIAVOZ_PRICE_LLM_OUT_PER_M_CENTS"),

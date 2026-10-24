@@ -90,7 +90,13 @@ class TriaVozApi:
         )
         return str(data["call_id"])
 
-    async def tool(self, name: str, clinic_id: str, call_id: str, **kwargs: Any) -> Any:
+    async def tool(
+        self, name: str, clinic_id: str, call_id: str, /, **kwargs: Any
+    ) -> Any:
+        # Server-provided identifiers are never part of the LLM-visible tool schema. Reject an
+        # accidental/overridden value instead of silently merging it into the signed payload.
+        if "clinic_id" in kwargs or "call_id" in kwargs:
+            raise ApiError(422, "reserved_tool_argument")
         return await self._post(
             f"/tools/{name}", {"clinic_id": clinic_id, "call_id": call_id, **kwargs}
         )

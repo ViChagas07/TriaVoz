@@ -3,11 +3,52 @@ import { NextResponse, type NextRequest } from "next/server";
 const LOCALES = new Set(["pt-BR", "en"]);
 const PROTECTED = ["/painel", "/chamadas", "/agendamentos", "/agente", "/configuracoes"];
 const API_ORIGIN = (process.env.API_ORIGIN ?? "http://localhost:8000").replace(/\/$/, "");
-const ACCESS_COOKIE = "triavoz_access";
-const REFRESH_COOKIE = "triavoz_refresh";
+// Production sets COOKIE_PREFIX=__Host- so the API's Secure/Path=/ cookies cannot be shadowed by
+// a subdomain. Keep it empty in local HTTP development.
+const COOKIE_PREFIX = process.env.COOKIE_PREFIX ?? "";
+const ACCESS_COOKIE = `${COOKIE_PREFIX}triavoz_access`;
+const REFRESH_COOKIE = `${COOKIE_PREFIX}triavoz_refresh`;
 
 function isProtected(pathname: string): boolean {
   return PROTECTED.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+}
+
+function contentSecurityPolicy(nonce: string, secure: boolean): string {
+  const dev = process.env.NODE_ENV !== "production";
+  const livekit =
+    process.env.NEXT_PUBLIC_LIVEKIT_CONNECT_SRC ??
+    "https://*.livekit.cloud wss://*.livekit.cloud";
+  const local = dev ? " http://localhost:* ws://localhost:*" : "";
+  const script = dev
+    ? `'self' 'nonce-${nonce}' 'unsafe-eval'`
+    : `'self' 'nonce-${nonce}' 'strict-dynamic'`;
+  return [
+    "default-src 'self'",
+    `script-src ${script}`,
+    // Next injects small style tags/attributes; scripts stay nonce-gated.
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    `connect-src 'self' ${livekit} https://*.ingest.sentry.io${local}`,
+    "media-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "manifest-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    secure ? "upgrade-insecure-requests" : "",
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
+function withNonce(request: NextRequest): { nonce: string; csp: string } {
+  const nonce = btoa(crypto.randomUUID());
+  const secure =
+    request.nextUrl.protocol === "https:" ||
+    request.headers.get("x-forwarded-proto") === "https";
+  return { nonce, csp: contentSecurityPolicy(nonce, secure) };
 }
 
 /**
@@ -60,7 +101,14 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(login);
   }
 
-  return NextResponse.next();
+  const { nonce, csp } = withNonce(request);
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nonce", nonce);
+  // Next reads this request header to add the nonce to its own parser-inserted scripts.
+  requestHeaders.set("Content-Security-Policy", csp);
+  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  response.headers.set("Content-Security-Policy", csp);
+  return response;
 }
 
 export const config = {

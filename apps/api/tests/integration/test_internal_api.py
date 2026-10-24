@@ -47,6 +47,17 @@ async def test_health_is_public(client: httpx.AsyncClient) -> None:
     assert (await client.get("/health")).json() == {"status": "ok"}
 
 
+async def test_prometheus_endpoint_is_public_and_exposes_business_metrics(
+    client: httpx.AsyncClient,
+) -> None:
+    response = await client.get("/metrics")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/plain")
+    assert "triavoz_http_requests_total" in response.text
+    assert "triavoz_calls_started_total" in response.text
+    assert "triavoz_gatekeeper_blocks_total" in response.text
+
+
 async def test_internal_routes_reject_missing_or_bad_signature(
     client: httpx.AsyncClient, tenants: dict[str, dict[str, Any]]
 ) -> None:
@@ -81,7 +92,7 @@ async def test_full_voice_booking_flow_over_http(
     r = await _post(
         client,
         "/internal/agent/calls/start",
-        {"clinic_id": clinic, "channel": "web", "caller_number": phone},
+        {"clinic_id": clinic, "channel": "phone", "caller_number": phone},
     )
     assert r.status_code == 200
     ctx = {"clinic_id": clinic, "call_id": r.json()["call_id"]}

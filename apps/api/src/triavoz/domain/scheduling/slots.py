@@ -39,6 +39,12 @@ def free_slots(
     does not overlap `busy`, and is not earlier than now + min_notice."""
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
+    if duration <= timedelta(0):
+        raise ValueError("duration must be positive")
+    if step <= timedelta(0):
+        raise ValueError("step must be positive")
+    if min_notice < timedelta(0):
+        raise ValueError("min_notice must not be negative")
     earliest = now + min_notice
     result: list[datetime] = []
     for w in windows:

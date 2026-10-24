@@ -16,7 +16,7 @@ def set_auth_cookies(
 ) -> None:
     s: Settings = get_settings()
     response.set_cookie(
-        s.access_cookie_name,
+        s.access_cookie,
         access_token,
         max_age=s.jwt_access_ttl_seconds,
         path="/",
@@ -25,7 +25,7 @@ def set_auth_cookies(
         samesite=s.cookie_samesite,
     )
     response.set_cookie(
-        s.refresh_cookie_name,
+        s.refresh_cookie,
         refresh_token,
         expires=refresh_expires,
         path=REFRESH_PATH,
@@ -36,6 +36,17 @@ def set_auth_cookies(
 
 
 def clear_auth_cookies(response: Response) -> None:
+    # Do NOT use Starlette's delete_cookie here: it omits Secure, and browsers reject an expired
+    # __Host- cookie that does not repeat the Secure/Path attributes.
     s = get_settings()
-    response.delete_cookie(s.access_cookie_name, path="/")
-    response.delete_cookie(s.refresh_cookie_name, path=REFRESH_PATH)
+    for name in (s.access_cookie, s.refresh_cookie):
+        response.set_cookie(
+            name,
+            "",
+            max_age=0,
+            expires=0,
+            path=REFRESH_PATH,
+            httponly=True,
+            secure=s.cookie_secure,
+            samesite=s.cookie_samesite,
+        )

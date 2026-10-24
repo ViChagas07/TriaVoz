@@ -20,13 +20,14 @@
   and scanned 10,000 rows for time off (1.65 ms → 0.10 ms). Existing request-queue and call-list
   indexes already matched their predicates.
 
-## Retention (design only; implementation is TODO P07/P09)
-Transcripts are the sensitive part of a call. The retention job should:
+## Retention (implemented in P09: migrations 0005/0006)
+Transcripts are the sensitive part of a call. The retention job (`purge_expired_transcripts`,
+called by `scripts/purge_retention.py`) does:
 1. read `clinic_settings.transcript_retention_days` per active clinic;
-2. run as `triavoz_ops` and call a `SECURITY DEFINER` function owned by `triavoz_definer`, e.g.
-   `purge_call_transcripts(p_clinic_id uuid, p_before timestamptz)`, which deletes `call_turns`
-   in bounded batches and writes an `audit_log` summary;
-3. leave `calls` metadata and cost/latency aggregates intact, and never run on an emergency/active
+2. run as `triavoz_ops` and call `purge_expired_transcripts(p_batch_size)`, a `SECURITY DEFINER`
+   function owned by `triavoz_definer`, which deletes `call_turns` in bounded batches, writes an
+   `audit_log` summary, and pseudonymises `summary`/`caller_number` once no turns remain;
+3. leave `calls` cost/latency aggregates intact, and never run on an emergency/active
    call.
 
 The function is deliberately **not** added in P02: it changes the ops grant surface (ops should get

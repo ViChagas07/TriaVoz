@@ -71,6 +71,13 @@ async def create_appointment(
     )
     appointment = await repo.get_appointment(appointment_id)
     assert appointment is not None
+    await repo.add_audit(
+        action="appointment.create",
+        resource_type="appointment",
+        resource_id=str(appointment_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     await events.publish(
         principal.clinic_id,
         "appointment.created",
@@ -96,6 +103,13 @@ async def move_appointment(
     )
     appointment = await repo.get_appointment(appointment_id)
     assert appointment is not None
+    await repo.add_audit(
+        action="appointment.move",
+        resource_type="appointment",
+        resource_id=str(appointment_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     await events.publish(
         principal.clinic_id,
         "appointment.moved",
@@ -117,6 +131,13 @@ async def cancel_appointment(
     )
     appointment = await repo.get_appointment(appointment_id)
     assert appointment is not None
+    await repo.add_audit(
+        action="appointment.cancel",
+        resource_type="appointment",
+        resource_id=str(appointment_id),
+        user_id=principal.user_id,
+        ip=None,
+    )
     await events.publish(
         principal.clinic_id,
         "appointment.canceled",

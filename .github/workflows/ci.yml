@@ -41,18 +41,157 @@ jobs:
         env:
           TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
         run: poetry run alembic upgrade head
-      - run: poetry run ruff check src tests migrations scripts
-      - run: poetry run ruff format --check src tests migrations scripts
+      - run: poetry run ruff check src tests migrations scripts evals
+      - run: poetry run ruff format --check src tests migrations scripts evals
       - run: poetry run mypy src
-      - name: Tests (incl. tenant isolation — blocks merge)
+      - name: Tests (coverage; isolation suite included and blocking)
         env:
           TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
           TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
           TRIAVOZ_TEST_OPS_DSN: postgresql://triavoz_ops:ci-ops@localhost:5432/triavoz
           TRIAVOZ_TEST_REDIS_URL: redis://localhost:6379/15
-        run: poetry run pytest -q
-      - run: pip install pip-audit && poetry export --without-hashes -f requirements.txt | pip-audit -r /dev/stdin
-        continue-on-error: true   # TODO(P09): make blocking once the baseline is clean
+          TRIAVOZ_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+          TRIAVOZ_INTERNAL_HMAC_SECRET: ci-hmac-secret-0123456789abcdef0123456789abcdef
+        run: |
+          poetry run pytest -q \
+            --cov=triavoz \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=json:coverage.json \
+            --cov-fail-under=85
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo '### API coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          poetry run coverage report --skip-covered >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triavoz-api-coverage
+          path: |
+            apps/api/coverage.xml
+            apps/api/coverage.json
+      - name: Repeat suite 3x (flake gate)
+        env:
+          TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
+          TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
+          TRIAVOZ_TEST_OPS_DSN: postgresql://triavoz_ops:ci-ops@localhost:5432/triavoz
+          TRIAVOZ_TEST_REDIS_URL: redis://localhost:6379/15
+          TRIAVOZ_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+          TRIAVOZ_INTERNAL_HMAC_SECRET: ci-hmac-secret-0123456789abcdef0123456789abcdef
+        run: |
+          set -e
+          for run in 1 2 3; do
+            echo "::group::repeat run $run"
+            poetry run pytest -q -p no:cacheprovider
+            echo "::endgroup::"
+          done
+      - name: Dependency audit (blocking)
+        run: |
+          pip install pip-audit
+          poetry export --without-hashes -f requirements.txt -o /tmp/api-requirements.txt
+          pip-audit -r /tmp/api-requirements.txt
+
+  isolation:
+    # Dedicated blocking gate: RLS guard, cross-tenant reads/writes, role privileges, routing.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: triavoz }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: triavoz
+      TRIAVOZ_OWNER_PASSWORD: ci-owner
+      TRIAVOZ_APP_PASSWORD: ci-app
+      TRIAVOZ_OPS_PASSWORD: ci-ops
+    defaults: { run: { working-directory: apps/api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install "poetry==2.4.1" && poetry install
+      - name: Create DB roles
+        working-directory: .
+        run: bash infra/postgres/init/01-roles.sh
+      - name: Migrate (as owner)
+        env:
+          TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
+        run: poetry run alembic upgrade head
+      - name: Tenant isolation (blocks merge)
+        env:
+          TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
+          TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
+          TRIAVOZ_TEST_OPS_DSN: postgresql://triavoz_ops:ci-ops@localhost:5432/triavoz
+          TRIAVOZ_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+          TRIAVOZ_INTERNAL_HMAC_SECRET: ci-hmac-secret-0123456789abcdef0123456789abcdef
+        run: poetry run pytest -q tests/isolation
+
+  evals:
+    # Deterministic text-mode suite: real HMAC tool endpoints + real PostgreSQL, no provider key.
+    # It gates merge on zero hallucinated slots and 100% task success.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: triavoz }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: triavoz
+      TRIAVOZ_OWNER_PASSWORD: ci-owner
+      TRIAVOZ_APP_PASSWORD: ci-app
+      TRIAVOZ_OPS_PASSWORD: ci-ops
+    defaults: { run: { working-directory: apps/api } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install "poetry==2.4.1" && poetry install
+      - name: Create DB roles
+        working-directory: .
+        run: bash infra/postgres/init/01-roles.sh
+      - name: Migrate (as owner)
+        env:
+          TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
+        run: poetry run alembic upgrade head
+      - name: Deterministic evals
+        env:
+          TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
+          TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
+          TRIAVOZ_TEST_REDIS_URL: redis://localhost:6379/15
+          TRIAVOZ_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+          TRIAVOZ_INTERNAL_HMAC_SECRET: ci-hmac-secret-0123456789abcdef0123456789abcdef
+        run: poetry run python -m evals --json-out evals/results/ci.json --markdown-out evals/results/ci.md
+      - name: Publish eval summary
+        if: always()
+        run: |
+          if [ -f evals/results/ci.md ]; then
+            echo '### Deterministic evals' >> "$GITHUB_STEP_SUMMARY"
+            cat evals/results/ci.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: triavoz-evals
+          path: apps/api/evals/results/
 
   agent:
     runs-on: ubuntu-latest
@@ -65,6 +204,11 @@ jobs:
       - run: poetry run ruff check src tests
       - run: poetry run mypy src
       - run: poetry run pytest -q
+      - name: Worker dependency audit (blocking)
+        run: |
+          pip install pip-audit
+          poetry export --without-hashes -f requirements.txt -o /tmp/agent-requirements.txt
+          pip-audit -r /tmp/agent-requirements.txt
 
   web:
     runs-on: ubuntu-latest
@@ -76,8 +220,81 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - run: npm audit --omit=dev --audit-level=high
-        continue-on-error: true   # TODO(P09): make blocking
+      - name: npm audit (blocking, production deps)
+        run: npm audit --omit=dev --audit-level=high
+
+  e2e:
+    # Browser smoke on the real API + PostgreSQL + Redis; LiveKit is stubbed in the page.
+    # Blocking: a broken login/queue/transcript/agent/demo/tenant flow fails the merge.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: triavoz }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      PGHOST: localhost
+      PGPASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: triavoz
+      TRIAVOZ_OWNER_PASSWORD: ci-owner
+      TRIAVOZ_APP_PASSWORD: ci-app
+      TRIAVOZ_OPS_PASSWORD: ci-ops
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: apps/web/package-lock.json }
+      - name: Install API
+        working-directory: apps/api
+        run: pip install "poetry==2.4.1" && poetry install
+      - name: Create DB roles
+        run: bash infra/postgres/init/01-roles.sh
+      - name: Migrate (as owner)
+        working-directory: apps/api
+        env:
+          TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
+        run: poetry run alembic upgrade head
+      - name: Seed demo clinics
+        working-directory: apps/api
+        env:
+          TRIAVOZ_DATABASE_URL_OWNER: postgresql+psycopg://triavoz_owner:ci-owner@localhost:5432/triavoz
+        run: poetry run python scripts/seed_demo.py
+      - name: Install web
+        working-directory: apps/web
+        run: npm ci
+      - name: Install Chromium
+        working-directory: apps/web
+        run: npx playwright install --with-deps chromium
+      - name: Playwright E2E (blocking)
+        working-directory: apps/web
+        env:
+          TRIAVOZ_TEST_OWNER_DSN: postgresql://triavoz_owner:ci-owner@localhost:5432/triavoz
+          TRIAVOZ_TEST_APP_DSN: postgresql://triavoz_app:ci-app@localhost:5432/triavoz
+          TRIAVOZ_TEST_OPS_DSN: postgresql://triavoz_ops:ci-ops@localhost:5432/triavoz
+          TRIAVOZ_TEST_REDIS_URL: redis://localhost:6379/15
+          TRIAVOZ_JWT_SECRET: ci-jwt-secret-0123456789abcdef0123456789abcdef
+          TRIAVOZ_INTERNAL_HMAC_SECRET: ci-hmac-secret-0123456789abcdef0123456789abcdef
+          E2E_API_URL: http://127.0.0.1:58000
+          E2E_BASE_URL: http://127.0.0.1:3300
+        run: npx playwright test
+      - name: Upload Playwright report, traces and videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: triavoz-playwright
+          path: |
+            apps/web/playwright-report/
+            apps/web/test-results/
 
   secrets:
     runs-on: ubuntu-latest
@@ -86,3 +303,52 @@ jobs:
         with: { fetch-depth: 0 }
       - uses: gitleaks/gitleaks-action@v2
         env: { GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
+
+  infrastructure:
+    # Static infrastructure/container-config checks (Dockerfiles, compose, k8s manifests).
+    # Dependency CVEs are covered by pip-audit/npm audit in the api/agent/web jobs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan (blocking HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+
+  containers:
+    # Build the three runtime images and block on fixable HIGH/CRITICAL OS/library CVEs.
+    # The images are multi-stage, run as non-root and do not ship pip/npm build tooling.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t triavoz-api:ci apps/api
+      - run: docker build -t triavoz-agent:ci apps/agent
+      - run: docker build -t triavoz-web:ci apps/web
+      - name: Trivy image scan (API)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: triavoz-api:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln
+      - name: Trivy image scan (worker)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: triavoz-agent:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln
+      - name: Trivy image scan (web)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: triavoz-web:ci
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          scanners: vuln

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from triavoz.shared_kernel.context import current_request_id
@@ -42,6 +43,23 @@ def register_exception_handlers(app: FastAPI) -> None:
         }.get(type(exc), 400)
         headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
         return JSONResponse(status_code=status, content=_body(exc.code), headers=headers)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        # Never echo the submitted value: a malformed login/transcript field must not reflect a
+        # password or free text back in the response (and therefore into a client/Sentry log).
+        fields = [
+            {"loc": [str(part) for part in error.get("loc", ())], "type": error.get("type")}
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": "invalid_request",
+                "errors": fields,
+                "request_id": current_request_id(),
+            },
+        )
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException) -> JSONResponse:

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import {
@@ -30,6 +31,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function Landing() {
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   const t = await getTranslations("landing");
   const nav = await getTranslations("nav");
   const faqs = FAQ_KEYS.map((index) => ({
@@ -259,6 +261,7 @@ export default async function Landing() {
       </div>
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{
           __html: JSON.stringify(jsonLd).replaceAll("<", "\\u003c"),
         }}

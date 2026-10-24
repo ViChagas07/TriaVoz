@@ -36,6 +36,15 @@ class SchedulingRepository(Protocol):
     """All methods run inside ONE tenant transaction (RLS context already set)."""
 
     async def clinic_timezone(self, clinic_id: UUID) -> str: ...
+    async def lock_professional(self, professional_id: UUID) -> None:
+        """Transaction-scoped advisory lock that serialises writes for one professional.
+
+        Booking, reschedule and staff-move all acquire it before checking availability. Without
+        it, two transactions moving different appointments into the same range can each hold
+        their own row and wait on the other's exclusion-index entry, producing a deadlock.
+        """
+        ...
+
     async def list_services(self) -> list[ServiceInfo]: ...
     async def get_service(self, service_id: UUID) -> ServiceInfo | None: ...
     async def professionals_for_service(
@@ -59,11 +68,24 @@ class SchedulingRepository(Protocol):
         """Raises SlotTaken when the DB exclusion constraint rejects an overlap."""
         ...
 
+    async def upcoming_for_owner(
+        self,
+        phone: str | None,
+        *,
+        phone_verified: bool,
+        identity_hash: bytes | None,
+        now: datetime,
+    ) -> list[AppointmentView]: ...
     async def upcoming_for_phone(self, phone: str, now: datetime) -> list[AppointmentView]: ...
     async def get_owned_appointment(
-        self, appointment_id: UUID, phone: str
+        self,
+        appointment_id: UUID,
+        phone: str | None,
+        *,
+        phone_verified: bool = True,
+        identity_hash: bytes | None = None,
     ) -> tuple[UUID, UUID, UUID, datetime] | None:
-        """(id, professional_id, service_id, starts_at) if booked and owned by `phone`."""
+        """(id, professional_id, service_id, starts_at) if booked and owned by the caller."""
         ...
 
     async def cancel(self, appointment_id: UUID, now: datetime) -> None: ...

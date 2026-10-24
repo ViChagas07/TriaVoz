@@ -22,6 +22,7 @@ from triavoz.application.abuse.policy import (
 from triavoz.application.abuse.ports import AbuseRepository, GateStore
 from triavoz.application.voice.ports import VoiceRoomService, VoiceSessionRepository
 from triavoz.config import Settings
+from triavoz.observability.metrics import observe_gatekeeper_block
 from triavoz.shared_kernel.emergency import EMERGENCY_MESSAGE
 from triavoz.shared_kernel.errors import ServiceUnavailable
 
@@ -44,6 +45,9 @@ class VoiceSessionOutcome:
     session: VoiceSessionResult | None
     policy: ClinicPolicy
     timezone: str
+    # Set when the call row was created but the provider failed. Returning normally lets the
+    # route commit `status='failed'` before it answers 503; raising here would roll it back.
+    provider_error: bool = False
 
 
 class StartVoiceSession:
@@ -75,6 +79,8 @@ class StartVoiceSession:
         channel: str = "web",
         emergency: bool = False,
         demo_caps: bool = True,
+        caller_verified: bool = False,
+        caller_identity_hash: bytes | None = None,
     ) -> VoiceSessionOutcome:
         ctx = await self._repo.voice_context()
         if ctx is None:
@@ -114,6 +120,8 @@ class StartVoiceSession:
             enforce_ip_limit=channel == "web",
         )
         if not decision.allowed:
+            await self._repo.record_gatekeeper_block(decision.reason.value)
+            observe_gatekeeper_block(decision.reason.value)
             return VoiceSessionOutcome(
                 decision=decision, session=None, policy=policy, timezone=ctx["timezone"]
             )
@@ -125,6 +133,8 @@ class StartVoiceSession:
                 room_name=room_name,
                 caller_number=caller_number,
                 channel=channel,
+                caller_verified=caller_verified,
+                caller_identity_hash=caller_identity_hash,
             )
             metadata = {
                 "clinic_id": str(clinic_id),
@@ -148,8 +158,19 @@ class StartVoiceSession:
         except Exception as exc:
             await self._repo.fail_call(call_id)
             await gate.release(str(call_id))
-            log.warning("voice session failed clinic=%s call=%s", clinic_id, call_id)
-            raise ServiceUnavailable("voice_provider_unavailable") from exc
+            log.warning(
+                "voice session failed clinic=%s call=%s error=%s",
+                clinic_id,
+                call_id,
+                type(exc).__name__,
+            )
+            return VoiceSessionOutcome(
+                decision=decision,
+                session=None,
+                policy=policy,
+                timezone=ctx["timezone"],
+                provider_error=True,
+            )
 
         if self._alerts is not None:
             await self._alerts.record_call(clinic_id)

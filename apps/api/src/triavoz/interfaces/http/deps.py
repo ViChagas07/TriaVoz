@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
@@ -34,8 +35,23 @@ from triavoz.shared_kernel.resilience import Bulkhead, CircuitBreaker
 
 
 def client_ip(request: Request) -> str:
-    # Do not trust X-Forwarded-For until the proxy configuration is explicitly validated (P09).
-    return request.client.host if request.client else "unknown"
+    """Best-effort client address for rate limiting/metrics.
+
+    X-Forwarded-For is only honored when the deployment explicitly opts in
+    (TRIAVOZ_TRUST_FORWARDED_FOR=true) behind a proxy that overwrites it. Otherwise the peer
+    address is used, which is spoof-proof but collapses to the proxy IP.
+    """
+    peer = request.client.host if request.client else "unknown"
+    if not get_settings().trust_forwarded_for:
+        return peer
+    forwarded = request.headers.get("X-Forwarded-For") or request.headers.get("X-Real-IP")
+    if not forwarded:
+        return peer
+    candidate = forwarded.split(",")[0].strip()
+    try:
+        return str(ipaddress.ip_address(candidate))
+    except ValueError:
+        return peer
 
 
 def _extract_token(request: Request) -> str | None:
@@ -43,7 +59,7 @@ def _extract_token(request: Request) -> str | None:
     if header.lower().startswith("bearer "):
         return header[7:].strip()
     # SSE/EventSource and same-origin navigation use the short-lived httpOnly access cookie.
-    return request.cookies.get(get_settings().access_cookie_name)
+    return request.cookies.get(get_settings().access_cookie)
 
 
 async def current_principal(request: Request) -> Principal:
@@ -99,6 +115,8 @@ def get_auth_service() -> AuthService:
         refresh_ttl_days=s.refresh_token_ttl_days,
         account_capacity=s.login_account_capacity,
         ip_capacity=s.login_ip_capacity,
+        refresh_ip_capacity=s.refresh_ip_capacity,
+        refresh_ip_refill_per_second=s.refresh_ip_refill_per_second,
     )
 
 

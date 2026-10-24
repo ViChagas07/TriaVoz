@@ -3,11 +3,16 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import {
   ArrowRight,
+  Ban,
   CalendarDays,
   Clock3,
+  Gauge,
   PhoneCall,
   ShieldAlert,
+  ShieldCheck,
+  Timer,
   Wallet,
+  Wrench,
 } from "lucide-react";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { Card, PageHeader } from "@/components/Card";
@@ -60,9 +65,16 @@ export default async function DashboardPage() {
     }),
   );
 
-  const stages = ["stt", "llm", "tts", "total"].map((key) => ({
+  const stages = (
+    [
+      ["end_of_utterance", "stage_end_of_utterance"],
+      ["llm_ttft", "stage_llm"],
+      ["tts_ttfb", "stage_tts"],
+      ["time_to_first_audio", "stage_total"],
+    ] as const
+  ).map(([key, label]) => ({
     key,
-    label: t(`stage_${key}` as "stage_stt"),
+    label: t(label as "stage_end_of_utterance"),
     p50: dashboard.latency_p50_ms[key] ?? 0,
     p95: dashboard.latency_p95_ms[key] ?? 0,
   }));
@@ -91,6 +103,37 @@ export default async function DashboardPage() {
       value: formatMoney(dashboard.cost_today_cents, locale),
       icon: Wallet,
       href: "/chamadas",
+    },
+  ];
+
+  const quality = [
+    {
+      label: t("kpiAvgDuration"),
+      value: `${formatNumber(Math.round(dashboard.avg_duration_seconds), locale)} ${t("secondsShort")}`,
+      icon: Timer,
+    },
+    {
+      label: t("kpiCostPerCall"),
+      value: formatMoney(dashboard.cost_per_call_cents, locale),
+      icon: Gauge,
+    },
+    {
+      label: t("kpiToolErrors"),
+      value: formatNumber(dashboard.tool_errors_today, locale),
+      icon: Wrench,
+    },
+    {
+      label: t("kpiSlotTaken"),
+      value: `${formatNumber(dashboard.slot_taken_today, locale)} · ${formatPercent(
+        dashboard.slot_taken_rate,
+        locale,
+      )}`,
+      icon: Ban,
+    },
+    {
+      label: t("kpiGatekeeper"),
+      value: formatNumber(dashboard.gatekeeper_blocks_today, locale),
+      icon: ShieldCheck,
     },
   ];
 
@@ -137,6 +180,32 @@ export default async function DashboardPage() {
             </Link>
           );
         })}
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-semibold">{t("qualityTitle")}</h2>
+          <span className="text-[0.68rem] text-muted">{t("qualityHint")}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+          {quality.map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <div
+                key={metric.label}
+                className="rounded-2xl border border-border bg-surface p-3.5"
+              >
+                <span className="flex items-center justify-between gap-2 text-[0.68rem] text-muted">
+                  <span className="truncate">{metric.label}</span>
+                  <Icon aria-hidden className="size-4 shrink-0 text-primary-strong" />
+                </span>
+                <span className="mt-1.5 block text-lg font-semibold tabular-nums">
+                  {metric.value}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">

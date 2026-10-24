@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 from fastapi import APIRouter, Depends, Request, Response, status
 
-from triavoz.application.auth.ports import AuthRepository, ClinicResolver, PasswordHasher
+from triavoz.application.auth.ports import AuthRepository, ClinicResolver
 from triavoz.application.auth.service import (
     AuthService,
     RefreshRejected,
@@ -22,7 +23,6 @@ from triavoz.interfaces.http.deps import (
     current_principal,
     get_auth_service,
     get_clinic_resolver,
-    get_password_hasher,
     get_staff_repo,  # noqa: F401  (dependency export)
 )
 from triavoz.shared_kernel.errors import AuthenticationError
@@ -49,37 +49,43 @@ async def login(
     response: Response,
     service: AuthService = Depends(get_auth_service),
     resolver: ClinicResolver = Depends(get_clinic_resolver),
-    hasher: PasswordHasher = Depends(get_password_hasher),
 ) -> LoginOut:
-    clinic_id = await resolver.by_slug(body.clinic_code)
-    ip = client_ip(request)
-    if clinic_id is None:
-        await service.enforce_rate(clinic_code=body.clinic_code, email=body.email, ip=ip)
-        await asyncio.to_thread(hasher.verify, hasher.dummy_hash, body.password)
-        raise AuthenticationError("invalid credentials")
+    started = time.monotonic()
+    try:
+        clinic_id = await resolver.by_slug(body.clinic_code)
+        ip = client_ip(request)
+        if clinic_id is None:
+            await service.enforce_rate(clinic_code=body.clinic_code, email=body.email, ip=ip)
+            await service.verify_dummy(body.password)
+            raise AuthenticationError("invalid credentials")
 
-    async with tenant_session(clinic_id) as session:
-        repo: AuthRepository = PgAuthRepository(session)
-        result = await service.login(
-            repo,
-            clinic_code=body.clinic_code,
-            email=body.email,
-            password=body.password,
-            ip=ip,
-            user_agent=request.headers.get("User-Agent"),
+        async with tenant_session(clinic_id) as session:
+            repo: AuthRepository = PgAuthRepository(session)
+            result = await service.login(
+                repo,
+                clinic_code=body.clinic_code,
+                email=body.email,
+                password=body.password,
+                ip=ip,
+                user_agent=request.headers.get("User-Agent"),
+            )
+        access = create_access_token(result.principal)
+        set_auth_cookies(
+            response,
+            access_token=access,
+            refresh_token=result.refresh_token,
+            refresh_expires=result.refresh_expires_at,
         )
-    access = create_access_token(result.principal)
-    set_auth_cookies(
-        response,
-        access_token=access,
-        refresh_token=result.refresh_token,
-        refresh_expires=result.refresh_expires_at,
-    )
-    return LoginOut(
-        access_token=access,
-        expires_in=get_settings().jwt_access_ttl_seconds,
-        user=_user_out(result.user),
-    )
+        return LoginOut(
+            access_token=access,
+            expires_in=get_settings().jwt_access_ttl_seconds,
+            user=_user_out(result.user),
+        )
+    finally:
+        # Constant-time floor: an unknown clinic must not answer measurably faster than a real one.
+        remaining = get_settings().login_min_seconds - (time.monotonic() - started)
+        if remaining > 0:
+            await asyncio.sleep(remaining)
 
 
 @router.post("/refresh", response_model=LoginOut)
@@ -88,7 +94,8 @@ async def refresh(
     response: Response,
     service: AuthService = Depends(get_auth_service),
 ) -> LoginOut:
-    raw = request.cookies.get(get_settings().refresh_cookie_name)
+    await service.enforce_refresh_rate(ip=client_ip(request))
+    raw = request.cookies.get(get_settings().refresh_cookie)
     clinic_id = parse_refresh_clinic(raw) if raw else None
     if raw is None or clinic_id is None:
         raise AuthenticationError("refresh")
@@ -116,15 +123,16 @@ async def refresh(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout(request: Request, response: Response) -> Response:
-    raw = request.cookies.get(get_settings().refresh_cookie_name)
+async def logout(request: Request) -> Response:
+    raw = request.cookies.get(get_settings().refresh_cookie)
     clinic_id = parse_refresh_clinic(raw) if raw else None
     if raw and clinic_id:
         async with tenant_session(clinic_id) as session:
             repo: AuthRepository = PgAuthRepository(session)
             await get_auth_service().logout(repo, raw_token=raw)
-    clear_auth_cookies(response)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    out = Response(status_code=status.HTTP_204_NO_CONTENT)
+    clear_auth_cookies(out)
+    return out
 
 
 @router.get("/me", response_model=MeOut)

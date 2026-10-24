@@ -7,8 +7,17 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+coverage.json
+htmlcov/
+cov.json
+covpytest.json
 node_modules/
 .next/
+playwright-report/
+test-results/
 next-env.d.ts
 *.tsbuildinfo
 dist/

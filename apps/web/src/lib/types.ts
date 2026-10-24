@@ -113,6 +113,13 @@ export type Dashboard = {
   handoffs_today: number;
   handoff_rate: number;
   cost_today_cents: number;
+  avg_duration_seconds: number;
+  cost_per_call_cents: number;
+  cost_per_minute_cents: number;
+  tool_errors_today: number;
+  slot_taken_today: number;
+  slot_taken_rate: number;
+  gatekeeper_blocks_today: number;
   latency_p50_ms: Record<string, number>;
   latency_p95_ms: Record<string, number>;
 };

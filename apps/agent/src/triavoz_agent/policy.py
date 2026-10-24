@@ -33,6 +33,25 @@ def contains_emergency(text: str | None) -> bool:
 
 
 @dataclass
+class SilencePolicy:
+    """One warning, then close. The clock resets on every caller turn."""
+
+    timeout_seconds: float
+    warned: bool = False
+
+    def evaluate(self, idle_seconds: float) -> str | None:
+        if idle_seconds < self.timeout_seconds:
+            return None
+        if not self.warned:
+            self.warned = True
+            return "warn"
+        return "close"
+
+    def note_activity(self) -> None:
+        self.warned = False
+
+
+@dataclass
 class HandoffPolicy:
     max_turns: int = 20
     clarify_threshold: int = 2

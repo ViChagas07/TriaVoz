@@ -27,6 +27,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clsx } from "clsx";
 import { VoiceOrb, type OrbState } from "@/components/VoiceOrb";
+import { createDemoRoom } from "@/lib/demo-room";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, formatDuration } from "@/lib/format";
 import type { VoiceSession } from "@/lib/types";
@@ -317,7 +318,7 @@ export function DemoStage({ preview }: { preview?: string }) {
     setCallId(session.call_id);
     setTimezone(session.timezone ?? undefined);
     setPhase("connecting");
-    const room = new Room({ adaptiveStream: true, dynacast: true });
+    const room = createDemoRoom({ adaptiveStream: true, dynacast: true });
     roomRef.current = room;
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {

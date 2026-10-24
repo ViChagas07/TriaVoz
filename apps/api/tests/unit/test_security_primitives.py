@@ -37,6 +37,17 @@ def test_hmac_roundtrip_and_tamper_detection() -> None:
     )
 
 
+def test_hmac_accepts_previous_secret_only_during_rotation() -> None:
+    ts = int(time.time())
+    body = b'{"clinic_id":"x"}'
+    nonce = "rotation-nonce"
+    old = "old-secret-0123456789abcdef0123456789"
+    current = "new-secret-0123456789abcdef0123456789"
+    signature = hmac_auth.sign(old, ts, body, nonce)
+    assert hmac_auth.verify_any([current, old], str(ts), signature, body, 60, nonce_header=nonce)
+    assert not hmac_auth.verify_any([current], str(ts), signature, body, 60, nonce_header=nonce)
+
+
 def test_hmac_rejects_replayed_old_timestamp() -> None:
     ts = int(time.time()) - 3600
     body = b"{}"

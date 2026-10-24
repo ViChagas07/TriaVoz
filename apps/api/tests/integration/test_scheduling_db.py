@@ -8,6 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy import text
 
 from tests.conftest import future_monday
 from triavoz.application.scheduling.use_cases import (
@@ -156,3 +157,72 @@ async def test_booking_requires_an_offered_slot(tenants: dict[str, dict[str, Any
         await _book(t, local(2, 23, 0), "+5571933332222")  # LLM-invented time, outside hours
     with pytest.raises(SlotUnavailable):
         await _book(t, local(2, 9, 7), "+5571933332222")  # not on the 15-minute grid
+
+
+async def test_concurrent_reschedules_to_the_same_target_yield_exactly_one_winner(
+    isolated_clinic: dict[str, Any],
+) -> None:
+    t = isolated_clinic
+    target = local(2, 10, 0)
+    first = await _book(t, local(2, 9, 0), "+5571911110001", "Paciente A")
+    second = await _book(t, local(2, 11, 0), "+5571911110002", "Paciente B")
+
+    async def move(appointment_id: Any, phone: str) -> None:
+        async with tenant_session(t["clinic"]) as s:
+            await RescheduleAppointment(PgSchedulingRepository(s)).execute(
+                clinic_id=t["clinic"],
+                appointment_id=appointment_id,
+                caller_phone=phone,
+                new_starts_at=target,
+                now=datetime.now(UTC),
+            )
+
+    results = await asyncio.gather(
+        move(first, "+5571911110001"),
+        move(second, "+5571911110002"),
+        return_exceptions=True,
+    )
+    winners = [r for r in results if not isinstance(r, Exception)]
+    losers = [r for r in results if isinstance(r, Exception)]
+    assert len(winners) == 1
+    assert all(isinstance(e, SlotTaken | SlotUnavailable) for e in losers), losers
+
+    async with tenant_session(t["clinic"]) as s:
+        booked_at_target = (
+            await s.execute(
+                text(
+                    "SELECT count(*) FROM appointments "
+                    "WHERE starts_at = :target AND status = 'booked'"
+                ),
+                {"target": target},
+            )
+        ).scalar_one()
+    assert booked_at_target == 1
+
+
+async def test_reschedule_race_against_a_new_booking_has_one_winner(
+    isolated_clinic: dict[str, Any],
+) -> None:
+    t = isolated_clinic
+    target = local(2, 10, 0)
+    appt = await _book(t, local(2, 9, 0), "+5571911110003", "Paciente C")
+
+    async def move() -> None:
+        async with tenant_session(t["clinic"]) as s:
+            await RescheduleAppointment(PgSchedulingRepository(s)).execute(
+                clinic_id=t["clinic"],
+                appointment_id=appt,
+                caller_phone="+5571911110003",
+                new_starts_at=target,
+                now=datetime.now(UTC),
+            )
+
+    results = await asyncio.gather(
+        move(),
+        _book(t, target, "+5571911110004", "Paciente D"),
+        return_exceptions=True,
+    )
+    winners = [r for r in results if not isinstance(r, Exception)]
+    losers = [r for r in results if isinstance(r, Exception)]
+    assert len(winners) == 1
+    assert all(isinstance(e, SlotTaken | SlotUnavailable) for e in losers), losers

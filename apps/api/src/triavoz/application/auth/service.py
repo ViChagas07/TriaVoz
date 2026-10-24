@@ -75,12 +75,19 @@ class AuthService:
         refresh_ttl_days: int = 30,
         account_capacity: int = 5,
         ip_capacity: int = 30,
+        refresh_ip_capacity: int = 60,
+        refresh_ip_refill_per_second: float = 1.0,
     ) -> None:
         self._limiter = limiter
         self._hasher = hasher
         self._ttl = timedelta(days=refresh_ttl_days)
         self._account_capacity = account_capacity
         self._ip_capacity = ip_capacity
+        self._refresh_ip_capacity = refresh_ip_capacity
+        self._refresh_ip_refill = refresh_ip_refill_per_second
+        # Argon2id uses 64 MiB per verification; cap concurrent verifications so a burst of
+        # unauthenticated logins cannot exhaust the process/host memory.
+        self._verify_slots = asyncio.Semaphore(4)
 
     async def enforce_rate(self, *, clinic_code: str, email: str, ip: str) -> None:
         account_key = f"triavoz:auth:acct:{clinic_code.lower()}:{email.lower()}"
@@ -89,6 +96,25 @@ class AuthService:
         ip_ok = await self._limiter.allow(ip_key, self._ip_capacity, 1 / 10, cost=1)
         if not (account_ok and ip_ok):
             raise TooManyAttempts("login")
+
+    async def verify_dummy(self, password: str) -> None:
+        async with self._verify_slots:
+            await asyncio.to_thread(self._hasher.verify, self._hasher.dummy_hash, password)
+
+    async def _verify(self, password_hash: str, password: str) -> bool:
+        async with self._verify_slots:
+            return await asyncio.to_thread(self._hasher.verify, password_hash, password)
+
+    async def enforce_refresh_rate(self, *, ip: str) -> None:
+        # Refresh is unauthenticated by design (cookie only): bound it per source address.
+        ok = await self._limiter.allow(
+            f"triavoz:auth:refresh:ip:{ip}",
+            self._refresh_ip_capacity,
+            self._refresh_ip_refill,
+            cost=1,
+        )
+        if not ok:
+            raise TooManyAttempts("refresh")
 
     async def login(
         self,
@@ -106,6 +132,13 @@ class AuthService:
             self._hasher.verify, user.password_hash if user else self._hasher.dummy_hash, password
         )
         if user is None or not user.is_active or not valid:
+            await repo.add_audit(
+                action="auth.login_failed",
+                resource_type="user",
+                resource_id=str(user.id) if user else None,
+                user_id=user.id if user else None,
+                ip=ip,
+            )
             raise AuthenticationError("invalid credentials")
         # A successful login clears the account's failure budget; the IP budget keeps counting.
         await self._limiter.reset(f"triavoz:auth:acct:{clinic_code.lower()}:{email.lower()}")
@@ -123,6 +156,13 @@ class AuthService:
             created_ip=ip,
             user_agent=user_agent,
         )
+        await repo.add_audit(
+            action="auth.login",
+            resource_type="user",
+            resource_id=str(user.id),
+            user_id=user.id,
+            ip=ip,
+        )
         return LoginResult(user, principal, raw, expires)
 
     async def refresh(
@@ -139,6 +179,13 @@ class AuthService:
         if record.revoked_at is not None:
             # A revoked token presented again is a compromise signal: kill the whole family.
             await repo.revoke_family(record.family_id, "reuse_detected")
+            await repo.add_audit(
+                action="auth.refresh_reuse",
+                resource_type="user",
+                resource_id=str(record.user_id),
+                user_id=record.user_id,
+                ip=ip,
+            )
             return RefreshRejected("refresh_reuse")
         if record.expires_at <= datetime.now(UTC):
             return RefreshRejected("refresh_expired")
@@ -159,7 +206,12 @@ class AuthService:
             created_ip=ip,
             user_agent=user_agent,
         )
-        await repo.revoke_token(record.id, "rotated", replaced_by_id=new_id)
+        # Atomic rotation: two concurrent requests carrying the same token both reach this UPDATE,
+        # but only one sees an unrevoked row. The loser is treated as token reuse and kills the
+        # family, so a captured token can never mint two live sessions.
+        if not await repo.revoke_token(record.id, "rotated", replaced_by_id=new_id):
+            await repo.revoke_family(record.family_id, "reuse_detected")
+            return RefreshRejected("refresh_reuse")
         return RefreshResult(user, Principal(user.id, user.clinic_id, user.role), raw, expires)
 
     async def logout(self, repo: AuthRepository, *, raw_token: str) -> None:

@@ -22,6 +22,7 @@ router = APIRouter(prefix="/agent-config", tags=["agent-config"])
 @router.get("", response_model=AgentConfigStateOut)
 async def get_agent_config(
     repo: StaffRepository = Depends(get_staff_repo),
+    _: Principal = Depends(require_admin),
 ) -> AgentConfigStateOut:
     published = await repo.get_published_config()
     versions = await repo.list_config_versions()
@@ -35,6 +36,7 @@ async def get_agent_config(
 @router.get("/versions", response_model=list[ConfigVersionOut])
 async def list_versions(
     repo: StaffRepository = Depends(get_staff_repo),
+    _: Principal = Depends(require_admin),
 ) -> list[ConfigVersionOut]:
     return [ConfigVersionOut.model_validate(v) for v in await repo.list_config_versions()]
 

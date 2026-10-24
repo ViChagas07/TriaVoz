@@ -116,6 +116,8 @@ class BookAppointment:
         service = await self._repo.get_service(service_id)
         if service is None:
             raise NotFound("service")
+        # Serialise writers for this professional before reading availability. See port docstring.
+        await self._repo.lock_professional(professional_id)
         tz = ZoneInfo(await self._repo.clinic_timezone(clinic_id))
         local_start = starts_at.astimezone(tz)
         # Re-validate against the real availability: the time MUST be an offered slot.
@@ -147,16 +149,41 @@ class ListMyAppointments:
     def __init__(self, repo: SchedulingRepository) -> None:
         self._repo = repo
 
-    async def execute(self, *, caller_phone: str, now: datetime) -> list[AppointmentView]:
-        return await self._repo.upcoming_for_phone(caller_phone, now)
+    async def execute(
+        self,
+        *,
+        caller_phone: str | None,
+        now: datetime,
+        phone_verified: bool = True,
+        identity_hash: bytes | None = None,
+    ) -> list[AppointmentView]:
+        return await self._repo.upcoming_for_owner(
+            caller_phone,
+            phone_verified=phone_verified,
+            identity_hash=identity_hash,
+            now=now,
+        )
 
 
 class CancelAppointment:
     def __init__(self, repo: SchedulingRepository) -> None:
         self._repo = repo
 
-    async def execute(self, *, appointment_id: UUID, caller_phone: str, now: datetime) -> None:
-        owned = await self._repo.get_owned_appointment(appointment_id, caller_phone)
+    async def execute(
+        self,
+        *,
+        appointment_id: UUID,
+        caller_phone: str | None,
+        now: datetime,
+        phone_verified: bool = True,
+        identity_hash: bytes | None = None,
+    ) -> None:
+        owned = await self._repo.get_owned_appointment(
+            appointment_id,
+            caller_phone,
+            phone_verified=phone_verified,
+            identity_hash=identity_hash,
+        )
         if owned is None:
             raise NotFound("appointment")  # never reveal whether it exists for someone else
         await self._repo.cancel(appointment_id, now)
@@ -183,6 +210,7 @@ class MoveStaffAppointment:
         service = await self._repo.get_service(service_id)
         if service is None:
             raise NotFound("service")
+        await self._repo.lock_professional(professional_id)
         tz = ZoneInfo(await self._repo.clinic_timezone(clinic_id))
         offered = await _slots_for(
             self._repo,
@@ -219,17 +247,25 @@ class RescheduleAppointment:
         *,
         clinic_id: UUID,
         appointment_id: UUID,
-        caller_phone: str,
+        caller_phone: str | None,
         new_starts_at: datetime,
         now: datetime,
+        phone_verified: bool = True,
+        identity_hash: bytes | None = None,
     ) -> None:
-        owned = await self._repo.get_owned_appointment(appointment_id, caller_phone)
+        owned = await self._repo.get_owned_appointment(
+            appointment_id,
+            caller_phone,
+            phone_verified=phone_verified,
+            identity_hash=identity_hash,
+        )
         if owned is None:
             raise NotFound("appointment")
         _, professional_id, service_id, _old = owned
         service = await self._repo.get_service(service_id)
         if service is None:
             raise NotFound("service")
+        await self._repo.lock_professional(professional_id)
         tz = ZoneInfo(await self._repo.clinic_timezone(clinic_id))
         offered = await _slots_for(
             self._repo,

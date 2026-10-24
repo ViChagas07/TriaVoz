@@ -1,3 +1,9 @@
+-- Extensions are created by the migration owner so a fresh managed database (not only the
+-- Docker init script) can bootstrap. All three are trusted extensions on PostgreSQL 13+.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE EXTENSION IF NOT EXISTS citext;
+
 -- TriaVoz — initial schema with multi-tenant Row Level Security.
 -- Runs as triavoz_owner. Every table that holds customer data has clinic_id NOT NULL,
 -- ENABLE + FORCE ROW LEVEL SECURITY, and a tenant policy driven by app.current_clinic_id.

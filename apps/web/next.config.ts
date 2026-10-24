@@ -6,13 +6,17 @@ const API_ORIGIN = process.env.API_ORIGIN ?? "http://localhost:8000";
 
 // The browser talks ONLY to this origin; /api/v1 is proxied server-side to the API (no CORS,
 // no API URL or credentials exposed to the client). The /internal/* routes are NOT proxied.
+// CSP is issued per request with a nonce in src/proxy.ts; these are the static companions.
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self)" },
+  { key: "Permissions-Policy", value: "camera=(), geolocation=(), microphone=(self), payment=()" },
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
-  // TODO(P09): tighten with a nonce-based CSP once the UI is complete.
+  { key: "X-DNS-Prefetch-Control", value: "off" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
 ];
 
 const nextConfig: NextConfig = {

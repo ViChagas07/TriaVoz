@@ -24,6 +24,7 @@ from tests.conftest import OWNER_DSN, app_conn, future_monday
 from triavoz.application.auth.service import AuthService
 from triavoz.application.voice.ports import VoiceRoom
 from triavoz.config import get_settings
+from triavoz.infrastructure.rate_limit.gate_store import InMemoryGateStore
 from triavoz.infrastructure.rate_limit.limiter import InMemoryRateLimiter
 from triavoz.infrastructure.security import hmac_auth
 from triavoz.infrastructure.security.passwords import hash_password
@@ -31,6 +32,7 @@ from triavoz.interfaces.http.deps import (
     get_auth_service,
     get_demo_clinic_slug,
     get_event_stream,
+    get_gate_store_dep,
     get_password_hasher,
     get_voice_room_service,
 )
@@ -207,6 +209,20 @@ async def test_login_me_refresh_rotation_and_logout(
         "/api/v1/auth/logout", headers={"Cookie": f"{REFRESH_COOKIE}={new_refresh}"}
     )
     assert logout.status_code == 204
+    cleared = " ".join(logout.headers.get_list("set-cookie"))
+    assert "Max-Age=0" in cleared
+    assert ACCESS_COOKIE in cleared and REFRESH_COOKIE in cleared
+
+
+async def test_validation_errors_do_not_echo_secrets(client: httpx.AsyncClient) -> None:
+    secret = "super-secret-" + "x" * 400
+    response = await client.post(
+        "/api/v1/auth/login",
+        json={"clinic_code": "clinica-horizonte", "email": "a@example.test", "password": secret},
+    )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "invalid_request"
+    assert secret not in response.text
 
 
 async def test_login_generic_errors_and_progressive_lockout(
@@ -295,6 +311,8 @@ async def test_rbac_admin_only_routes_and_self_deactivation(
     email, attendant = await _create_attendant(client, admin, a["slug"])
 
     assert (await client.get("/api/v1/team", headers=attendant)).status_code == 403
+    assert (await client.get("/api/v1/agent-config", headers=attendant)).status_code == 403
+    assert (await client.get("/api/v1/agent-config/versions", headers=attendant)).status_code == 403
     assert (
         await client.put(
             "/api/v1/agent-config/draft",
@@ -410,6 +428,17 @@ async def test_calls_detail_summary_stub_and_dashboard(
     body = dashboard.json()
     assert body["calls_today"] >= 1
     assert "pending_requests" in body and "handoff_rate" in body
+    for field in (
+        "avg_duration_seconds",
+        "cost_per_call_cents",
+        "cost_per_minute_cents",
+        "tool_errors_today",
+        "slot_taken_today",
+        "slot_taken_rate",
+        "gatekeeper_blocks_today",
+    ):
+        assert isinstance(body[field], (int, float)), field
+    assert body["gatekeeper_blocks_today"] >= 1
 
 
 async def test_agenda_create_move_cancel(
@@ -520,14 +549,19 @@ async def test_sse_requires_auth_and_relays_tenant_events(
     assert (await client.get("/api/v1/events/stream")).status_code == 401
 
     class OneFrameBus:
+        def __init__(self) -> None:
+            self.seen: list[uuid.UUID] = []
+
         async def publish(self, clinic_id: uuid.UUID, event_type: str, data: dict[str, Any]):
             return None
 
         async def subscribe(self, clinic_id: uuid.UUID) -> AsyncIterator[str]:
+            self.seen.append(clinic_id)
             yield 'event: update\ndata: {"type":"request.created"}\n\n'
 
+    bus = OneFrameBus()
     app = _app()
-    app.dependency_overrides[get_event_stream] = lambda: OneFrameBus()
+    app.dependency_overrides[get_event_stream] = lambda: bus
     a = tenants["A"]
     async with _app_client(app) as stream_client:
         await _login(stream_client, a["slug"], "a@example.test")
@@ -536,6 +570,7 @@ async def test_sse_requires_auth_and_relays_tenant_events(
             lines = [line async for line in response.aiter_lines()]
         assert any(line.startswith("retry:") for line in lines)
         assert any("request.created" in line for line in lines)
+        assert bus.seen == [a["clinic"]], "the stream must subscribe to the caller's tenant"
 
 
 async def test_voice_session_uses_server_metadata_and_demo_clinic(
@@ -573,13 +608,16 @@ async def test_voice_session_uses_server_metadata_and_demo_clinic(
         assert fake.metadata["channel"] == "web"
         assert fake.metadata["caller_number"] == "+5571999922222"
         assert "agent_config" in fake.metadata and "timezone" in fake.metadata
+        cookie = r.headers.get("set-cookie", "")
+        assert "triavoz_caller=" in cookie and "HttpOnly" in cookie and "SameSite=lax" in cookie
         async with app_conn(a["clinic"]) as conn:
-            assert (
-                await conn.fetchval(
-                    "SELECT count(*) FROM calls WHERE id = $1", uuid.UUID(body["call_id"])
-                )
-                == 1
+            row = await conn.fetchrow(
+                "SELECT caller_verified, caller_identity_hash FROM calls WHERE id = $1",
+                uuid.UUID(body["call_id"]),
             )
+        assert row is not None
+        assert row["caller_verified"] is False
+        assert row["caller_identity_hash"] is not None
 
         bad = await c.post("/api/v1/voice/session", json={"caller_number": "123"})
         assert bad.status_code == 422
@@ -592,7 +630,7 @@ async def test_internal_idempotency_returns_same_book_and_request(
     started = await _internal(
         client,
         "/internal/agent/calls/start",
-        {"clinic_id": str(a["clinic"]), "channel": "web", "caller_number": "+5571999933333"},
+        {"clinic_id": str(a["clinic"]), "channel": "phone", "caller_number": "+5571999933333"},
     )
     ctx = {"clinic_id": str(a["clinic"]), "call_id": started.json()["call_id"]}
     slots = await _internal(
@@ -720,3 +758,31 @@ async def test_clinic_settings_and_catalog_crud(
     assert (
         await client.delete(f"/api/v1/professionals/{professional_id}", headers=headers)
     ).status_code == 204
+
+
+async def test_voice_provider_failure_returns_503_and_persists_a_failed_call(
+    tenants: dict[str, dict[str, Any]],
+) -> None:
+    class FailingRooms:
+        async def create_room(self, **_: Any) -> VoiceRoom:
+            raise RuntimeError("livekit unavailable")
+
+    app = _app()
+    app.dependency_overrides[get_demo_clinic_slug] = lambda: tenants["A"]["slug"]
+    app.dependency_overrides[get_voice_room_service] = lambda: FailingRooms()
+    app.dependency_overrides[get_gate_store_dep] = lambda: InMemoryGateStore()
+    phone = "+5571999911111"
+    async with _app_client(app) as c:
+        response = await c.post("/api/v1/voice/session", json={"caller_number": phone})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "service_unavailable"
+
+    async with app_conn(tenants["A"]["clinic"]) as conn:
+        row = await conn.fetchrow(
+            "SELECT status, ended_at FROM calls WHERE caller_number = $1 "
+            "ORDER BY started_at DESC LIMIT 1",
+            phone,
+        )
+    assert row is not None
+    assert row["status"] == "failed"
+    assert row["ended_at"] is not None

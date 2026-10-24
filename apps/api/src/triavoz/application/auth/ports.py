@@ -50,9 +50,18 @@ class AuthRepository(Protocol):
     async def find_refresh(self, token_hash: bytes) -> RefreshRecord | None: ...
     async def revoke_token(
         self, token_id: UUID, reason: str, replaced_by_id: UUID | None = None
-    ) -> None: ...
+    ) -> bool: ...
     async def revoke_family(self, family_id: UUID, reason: str) -> int: ...
     async def revoke_by_hash(self, token_hash: bytes, reason: str) -> None: ...
+    async def add_audit(
+        self,
+        *,
+        action: str,
+        resource_type: str,
+        resource_id: str | None,
+        user_id: UUID | None,
+        ip: str | None,
+    ) -> None: ...
 
 
 class PasswordHasher(Protocol):

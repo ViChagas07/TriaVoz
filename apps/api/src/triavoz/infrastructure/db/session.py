@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from triavoz.config import get_settings
+from triavoz.shared_kernel.context import bind_log_ids
 
 _engine: AsyncEngine | None = None
 _factory: async_sessionmaker[AsyncSession] | None = None
@@ -52,6 +53,9 @@ async def dispose_engine() -> None:
 @asynccontextmanager
 async def tenant_session(clinic_id: UUID) -> AsyncIterator[AsyncSession]:
     """One transaction, scoped to one clinic. Commits on success, rolls back on error."""
+    # Request logs are cleared by the HTTP middleware; setting the context here also covers
+    # background jobs and scripts that use a tenant session directly.
+    bind_log_ids(clinic_id=clinic_id)
     async with _session_factory()() as session, session.begin():
         await session.execute(
             text("SELECT set_config('app.current_clinic_id', :cid, true)"),

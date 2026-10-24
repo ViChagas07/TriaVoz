@@ -96,3 +96,29 @@ def test_naive_now_is_rejected() -> None:
             duration=timedelta(minutes=30),
             now=datetime(2020, 1, 1),
         )
+
+
+@pytest.mark.parametrize(
+    ("duration", "step", "min_notice"),
+    [
+        (timedelta(0), timedelta(minutes=15), timedelta(0)),
+        (timedelta(minutes=-5), timedelta(minutes=15), timedelta(0)),
+        (timedelta(minutes=30), timedelta(0), timedelta(0)),
+        (timedelta(minutes=30), timedelta(minutes=-15), timedelta(0)),
+        (timedelta(minutes=30), timedelta(minutes=15), timedelta(minutes=-1)),
+    ],
+)
+def test_non_positive_duration_step_or_negative_notice_is_rejected(
+    duration: timedelta, step: timedelta, min_notice: timedelta
+) -> None:
+    with pytest.raises(ValueError):
+        free_slots(
+            day=DAY,
+            tz=TZ,
+            windows=[WorkWindow(time(9), time(11))],
+            busy=[],
+            duration=duration,
+            now=LONG_AGO,
+            step=step,
+            min_notice=min_notice,
+        )

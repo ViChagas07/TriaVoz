@@ -810,7 +810,21 @@ class PgStaffRepository:
                     "(SELECT count(*) FROM calls WHERE started_at >= :start AND started_at < :end "
                     " AND handoff_requested) AS handoffs, "
                     "(SELECT COALESCE(sum(cost_cents), 0) FROM calls "
-                    " WHERE started_at >= :start AND started_at < :end) AS cost_today_cents"
+                    " WHERE started_at >= :start AND started_at < :end) AS cost_today_cents, "
+                    "(SELECT COALESCE(avg(duration_seconds), 0) FROM calls "
+                    " WHERE started_at >= :start AND started_at < :end) AS avg_duration_seconds, "
+                    "(SELECT COALESCE(sum(duration_seconds), 0) FROM calls "
+                    " WHERE started_at >= :start AND started_at < :end) AS duration_today_seconds, "
+                    "(SELECT COALESCE(sum(CASE WHEN usage->>'tool_errors' ~ '^[0-9]+$' "
+                    " THEN (usage->>'tool_errors')::int ELSE 0 END), 0) FROM calls "
+                    " WHERE started_at >= :start AND started_at < :end) AS tool_errors_today, "
+                    "(SELECT COALESCE(sum(CASE WHEN usage->>'slot_taken_errors' ~ '^[0-9]+$' "
+                    " THEN (usage->>'slot_taken_errors')::int ELSE 0 END), 0) FROM calls "
+                    " WHERE started_at >= :start AND started_at < :end) AS slot_taken_today, "
+                    "(SELECT COALESCE(sum(count), 0) FROM gatekeeper_block_stats "
+                    " WHERE day = (now() AT TIME ZONE "
+                    "   (SELECT timezone FROM clinics WHERE id = app_current_clinic_id()))::date) "
+                    " AS gatekeeper_blocks_today"
                 ),
                 {"start": start, "end": end},
             )
@@ -834,12 +848,22 @@ class PgStaffRepository:
                     stages.setdefault(stage, []).append(float(values["p50"]))
         calls_today = int(counts.calls_today)
         handoffs = int(counts.handoffs)
+        cost = float(counts.cost_today_cents)
+        duration = float(counts.duration_today_seconds)
+        slot_taken = int(counts.slot_taken_today)
         return {
             "pending_requests": int(counts.pending_requests),
             "calls_today": calls_today,
             "handoffs_today": handoffs,
             "handoff_rate": round(handoffs / calls_today, 4) if calls_today else 0.0,
-            "cost_today_cents": float(counts.cost_today_cents),
+            "cost_today_cents": cost,
+            "avg_duration_seconds": round(float(counts.avg_duration_seconds), 1),
+            "cost_per_call_cents": round(cost / calls_today, 4) if calls_today else 0.0,
+            "cost_per_minute_cents": round(cost / (duration / 60), 4) if duration else 0.0,
+            "tool_errors_today": int(counts.tool_errors_today),
+            "slot_taken_today": slot_taken,
+            "slot_taken_rate": round(slot_taken / calls_today, 4) if calls_today else 0.0,
+            "gatekeeper_blocks_today": int(counts.gatekeeper_blocks_today),
             "latency_p50_ms": {k: _percentile(v, 50) for k, v in stages.items()},
             "latency_p95_ms": {k: _percentile(v, 95) for k, v in stages.items()},
         }

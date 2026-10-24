@@ -8,6 +8,7 @@ caller's phone used for ownership checks comes from the stored call record, neve
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 from datetime import UTC, date, datetime
@@ -44,6 +45,7 @@ from triavoz.infrastructure.db.staff_repo import PgStaffRepository
 from triavoz.infrastructure.db.voice_repo import PgVoiceSessionRepository
 from triavoz.infrastructure.events.redis_events import get_event_bus
 from triavoz.infrastructure.idempotency import IdempotencyStore, get_idempotency_store
+from triavoz.infrastructure.rate_limit.limiter import get_limiter
 from triavoz.infrastructure.security import hmac_auth
 from triavoz.infrastructure.security.replay_guard import get_replay_guard
 from triavoz.interfaces.http.deps import (
@@ -52,6 +54,13 @@ from triavoz.interfaces.http.deps import (
     get_gate_store_dep,
     get_voice_room_service,
 )
+from triavoz.observability.metrics import (
+    observe_call_ended,
+    observe_call_started,
+    observe_tool_call,
+    observe_tool_error,
+)
+from triavoz.shared_kernel.context import bind_log_ids
 from triavoz.shared_kernel.errors import (
     DomainError,
     InvalidRequest,
@@ -61,13 +70,43 @@ from triavoz.shared_kernel.errors import (
 )
 
 
+async def guard_internal_request(request: Request) -> None:
+    """Network allow-list (optional) + a cheap bucket before the HMAC/body work.
+
+    The HMAC is the authentication boundary; this is defence-in-depth against scanning/flooding
+    of the internal surface if it is ever accidentally exposed by a proxy.
+    """
+    s = get_settings()
+    host = request.client.host if request.client else "unknown"
+    if s.internal_allowed_cidrs:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            raise HTTPException(status_code=403, detail="internal_forbidden") from None
+        if not any(
+            address in ipaddress.ip_network(network, strict=False)
+            for network in s.internal_allowed_cidrs
+        ):
+            raise HTTPException(status_code=403, detail="internal_forbidden")
+    allowed = await get_limiter().allow(
+        f"triavoz:internal:ip:{host}",
+        s.internal_rate_capacity,
+        s.internal_rate_refill_per_second,
+    )
+    if not allowed:
+        raise HTTPException(status_code=429, detail="rate_limited")
+
+
 async def verify_internal_signature(request: Request) -> None:
     s = get_settings()
     body = await request.body()
     nonce = request.headers.get(hmac_auth.NONCE_HEADER)
     signature = request.headers.get(hmac_auth.SIGNATURE_HEADER)
-    ok = hmac_auth.verify(
-        s.internal_hmac_secret.get_secret_value(),
+    secrets = [s.internal_hmac_secret.get_secret_value()]
+    if s.internal_hmac_secret_previous is not None:
+        secrets.append(s.internal_hmac_secret_previous.get_secret_value())
+    ok = hmac_auth.verify_any(
+        secrets,
         request.headers.get(hmac_auth.TIMESTAMP_HEADER),
         signature,
         body,
@@ -82,14 +121,29 @@ async def verify_internal_signature(request: Request) -> None:
         raise HTTPException(status_code=401, detail="replayed_request")
 
 
+async def bind_internal_log_context(request: Request) -> None:
+    """Put the server-side identifiers on the request log without trusting anything for authz."""
+    try:
+        payload = json.loads(await request.body() or b"{}")
+    except (TypeError, ValueError):
+        return
+    if isinstance(payload, dict):
+        bind_log_ids(clinic_id=payload.get("clinic_id"), call_id=payload.get("call_id"))
+
+
 router = APIRouter(
     prefix="/internal/agent",
     tags=["internal-agent"],
-    dependencies=[Depends(verify_internal_signature)],
+    dependencies=[
+        Depends(guard_internal_request),
+        Depends(verify_internal_signature),
+        Depends(bind_internal_log_context),
+    ],
 )
 
 
-def _http(exc: DomainError) -> HTTPException:
+def _http(exc: DomainError, tool: str) -> HTTPException:
+    observe_tool_error(tool, exc.code)
     status = {
         NotFound: 404,
         SlotTaken: 409,
@@ -142,8 +196,22 @@ class ServiceRequestIn(Ctx):
     due_date: date | None = None
 
 
+class TurnIn(BaseModel):
+    # The worker is trusted, but the payload is still bounded: an oversized or malformed turn must
+    # not reach the DB or blow up a request log. Unknown keys are ignored for forward compatibility.
+    model_config = ConfigDict(extra="ignore")
+
+    seq: int = Field(ge=0, le=1_000_000)
+    speaker: Literal["patient", "agent", "tool", "system"]
+    content: str = Field(default="", max_length=8000)
+    tool_name: str | None = Field(default=None, max_length=120)
+    tool_payload: dict[str, Any] | None = None
+    started_at: datetime | None = None
+    stt_confidence: float | None = Field(default=None, ge=0, le=1)
+
+
 class TurnsIn(Ctx):
-    turns: list[dict[str, Any]] = Field(max_length=200)
+    turns: list[TurnIn] = Field(max_length=200)
 
 
 class EndIn(Ctx):
@@ -166,6 +234,61 @@ class TelephonyIn(BaseModel):
     emergency: bool = False
 
 
+# Response models are part of the worker/API contract. `tests/contracts` snapshots them so a
+# rename or a changed field type cannot silently drift away from the worker's expectations.
+class StartCallOut(BaseModel):
+    call_id: str
+
+
+class ServiceOut(BaseModel):
+    id: str
+    name: str
+    duration_min: int
+    price_cents: int
+
+
+class SlotOut(BaseModel):
+    professional_id: str
+    professional_name: str
+    starts_at: str
+
+
+class BookOut(BaseModel):
+    appointment_id: str
+    status: Literal["booked"]
+
+
+class MyAppointmentOut(BaseModel):
+    appointment_id: str
+    service: str
+    professional: str
+    starts_at: str
+
+
+class StatusOut(BaseModel):
+    status: str
+
+
+class RequestOut(BaseModel):
+    request_id: str
+    status: Literal["pending"]
+
+
+class TurnsStoredOut(BaseModel):
+    stored: int
+
+
+class TelephonyOut(BaseModel):
+    mode: Literal["session", "fallback", "emergency"]
+    reason: str
+    message: str | None
+    handoff: bool
+    call_id: str | None
+    room_name: str | None
+    token: str | None
+    url: str | None
+
+
 def _aware(dt: datetime) -> datetime:
     if dt.tzinfo is None:
         raise HTTPException(status_code=422, detail="datetime must include a timezone offset")
@@ -183,7 +306,7 @@ def _idem_key(
     return f"{clinic_id}:{call_id}:{endpoint}:{header}", body_hash
 
 
-@router.post("/calls/start")
+@router.post("/calls/start", response_model=StartCallOut)
 async def start_call(
     body: StartCall, events: EventPublisher = Depends(get_events_dep)
 ) -> dict[str, str]:
@@ -194,12 +317,14 @@ async def start_call(
             room_name=body.room_name,
             caller_number=body.caller_number,
         )
+    observe_call_started(channel=body.channel)
     await events.publish(body.clinic_id, "call.started", {"call_id": str(call_id)})
     return {"call_id": str(call_id)}
 
 
-@router.post("/tools/list-services")
+@router.post("/tools/list-services", response_model=list[ServiceOut])
 async def list_services(body: Ctx) -> list[dict[str, Any]]:
+    observe_tool_call("list_services")
     async with tenant_session(body.clinic_id) as session:
         items = await ListServices(PgSchedulingRepository(session)).execute()
     return [
@@ -213,8 +338,9 @@ async def list_services(body: Ctx) -> list[dict[str, Any]]:
     ]
 
 
-@router.post("/tools/list-slots")
+@router.post("/tools/list-slots", response_model=list[SlotOut])
 async def list_slots(body: SlotsIn) -> list[dict[str, Any]]:
+    observe_tool_call("list_available_slots")
     try:
         async with tenant_session(body.clinic_id) as session:
             repo = PgSchedulingRepository(session)
@@ -237,7 +363,7 @@ async def list_slots(body: SlotsIn) -> list[dict[str, Any]]:
                 professional_id=UUID(professional_id) if professional_id else None,
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "list_available_slots") from exc
     return [
         {
             "professional_id": str(s.professional_id),
@@ -249,13 +375,14 @@ async def list_slots(body: SlotsIn) -> list[dict[str, Any]]:
     ]
 
 
-@router.post("/tools/book")
+@router.post("/tools/book", response_model=BookOut)
 async def book(
     body: BookIn,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     store: IdempotencyStore = Depends(get_idempotency_store),
     events: EventPublisher = Depends(get_events_dep),
 ) -> dict[str, str]:
+    observe_tool_call("book_appointment")
     key = _idem_key(
         clinic_id=body.clinic_id,
         call_id=body.call_id,
@@ -284,7 +411,7 @@ async def book(
                 now=datetime.now(UTC),
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "book_appointment") from exc
     result = {"appointment_id": str(appointment_id), "status": "booked"}
     if key is not None:
         await store.set(key[0], {"request_hash": key[1], "response": result})
@@ -296,18 +423,24 @@ async def book(
     return result
 
 
-@router.post("/tools/my-appointments")
+@router.post("/tools/my-appointments", response_model=list[MyAppointmentOut])
 async def my_appointments(body: Ctx) -> list[dict[str, str]]:
+    observe_tool_call("list_my_appointments")
     try:
         async with tenant_session(body.clinic_id) as session:
             repo = PgSchedulingRepository(session)
             zone = ZoneInfo(await repo.clinic_timezone(body.clinic_id))
-            phone = await PgCallRepository(session).caller_number(body.call_id)
+            phone, verified, identity = await PgCallRepository(session).caller_ownership(
+                body.call_id
+            )
             items = await ListMyAppointments(repo).execute(
-                caller_phone=phone, now=datetime.now(UTC)
+                caller_phone=phone,
+                now=datetime.now(UTC),
+                phone_verified=verified,
+                identity_hash=identity,
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "list_my_appointments") from exc
     return [
         {
             "appointment_id": str(i.id),
@@ -319,13 +452,14 @@ async def my_appointments(body: Ctx) -> list[dict[str, str]]:
     ]
 
 
-@router.post("/tools/cancel")
+@router.post("/tools/cancel", response_model=StatusOut)
 async def cancel(
     body: AppointmentIn,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     store: IdempotencyStore = Depends(get_idempotency_store),
     events: EventPublisher = Depends(get_events_dep),
 ) -> dict[str, str]:
+    observe_tool_call("cancel_appointment")
     key = _idem_key(
         clinic_id=body.clinic_id,
         call_id=body.call_id,
@@ -341,12 +475,18 @@ async def cancel(
             return dict(cached["response"])
     try:
         async with tenant_session(body.clinic_id) as session:
-            phone = await PgCallRepository(session).caller_number(body.call_id)
+            phone, verified, identity = await PgCallRepository(session).caller_ownership(
+                body.call_id
+            )
             await CancelAppointment(PgSchedulingRepository(session)).execute(
-                appointment_id=body.appointment_id, caller_phone=phone, now=datetime.now(UTC)
+                appointment_id=body.appointment_id,
+                caller_phone=phone,
+                now=datetime.now(UTC),
+                phone_verified=verified,
+                identity_hash=identity,
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "cancel_appointment") from exc
     result = {"status": "canceled"}
     if key is not None:
         await store.set(key[0], {"request_hash": key[1], "response": result})
@@ -358,13 +498,14 @@ async def cancel(
     return result
 
 
-@router.post("/tools/reschedule")
+@router.post("/tools/reschedule", response_model=StatusOut)
 async def reschedule(
     body: RescheduleIn,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     store: IdempotencyStore = Depends(get_idempotency_store),
     events: EventPublisher = Depends(get_events_dep),
 ) -> dict[str, str]:
+    observe_tool_call("reschedule_appointment")
     key = _idem_key(
         clinic_id=body.clinic_id,
         call_id=body.call_id,
@@ -381,16 +522,20 @@ async def reschedule(
     new_start = _aware(body.new_starts_at)
     try:
         async with tenant_session(body.clinic_id) as session:
-            phone = await PgCallRepository(session).caller_number(body.call_id)
+            phone, verified, identity = await PgCallRepository(session).caller_ownership(
+                body.call_id
+            )
             await RescheduleAppointment(PgSchedulingRepository(session)).execute(
                 clinic_id=body.clinic_id,
                 appointment_id=body.appointment_id,
                 caller_phone=phone,
                 new_starts_at=new_start,
                 now=datetime.now(UTC),
+                phone_verified=verified,
+                identity_hash=identity,
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "reschedule_appointment") from exc
     result = {"status": "rescheduled"}
     if key is not None:
         await store.set(key[0], {"request_hash": key[1], "response": result})
@@ -402,7 +547,7 @@ async def reschedule(
     return result
 
 
-@router.post("/telephony/incoming")
+@router.post("/telephony/incoming", response_model=TelephonyOut)
 async def telephony_incoming(
     body: TelephonyIn,
     request: Request,
@@ -437,7 +582,10 @@ async def telephony_incoming(
             channel="phone",
             emergency=body.emergency,
             demo_caps=False,
+            caller_verified=bool(body.from_number),
         )
+    if outcome.provider_error:
+        raise HTTPException(status_code=503, detail="voice_provider_unavailable")
     decision = outcome.decision
     if outcome.session is None:
         return {
@@ -451,6 +599,7 @@ async def telephony_incoming(
             "url": None,
         }
     result = outcome.session
+    observe_call_started(channel="phone")
     await get_event_bus().publish(clinic_id, "call.started", {"call_id": result.call_id})
     return {
         "mode": "session",
@@ -464,22 +613,21 @@ async def telephony_incoming(
     }
 
 
-@router.post("/calls/turns")
+@router.post("/calls/turns", response_model=TurnsStoredOut)
 async def add_turns(body: TurnsIn) -> dict[str, int]:
     turns = []
-    for t in body.turns:
-        if t.get("speaker") not in {"patient", "agent", "tool", "system"} or "seq" not in t:
-            raise HTTPException(status_code=422, detail="invalid turn")
-        payload = t.get("tool_payload")
+    for turn in body.turns:
+        data = turn.model_dump()
+        payload = data.pop("tool_payload")
         turns.append(
-            {**t, "tool_payload_json": json.dumps(payload) if payload is not None else None}
+            {**data, "tool_payload_json": json.dumps(payload) if payload is not None else None}
         )
     async with tenant_session(body.clinic_id) as session:
         await PgCallRepository(session).add_turns(body.clinic_id, body.call_id, turns)
     return {"stored": len(turns)}
 
 
-@router.post("/calls/end")
+@router.post("/calls/end", response_model=StatusOut)
 async def end_call(
     body: EndIn,
     events: EventPublisher = Depends(get_events_dep),
@@ -539,17 +687,27 @@ async def end_call(
                 cost_cents=body.cost_cents,
                 duration_seconds=body.duration_seconds or 0,
             )
+    observe_call_ended(
+        status=body.status,
+        reason=body.end_reason,
+        duration_seconds=body.duration_seconds,
+        cost_cents=body.cost_cents,
+        handoff_requested=body.handoff_requested,
+        handoff_completed=body.handoff_completed,
+        latency_ms=body.latency_ms,
+    )
     await events.publish(body.clinic_id, "call.ended", {"call_id": str(body.call_id)})
     return {"status": "ok"}
 
 
-@router.post("/tools/create-service-request")
+@router.post("/tools/create-service-request", response_model=RequestOut)
 async def create_service_request(
     body: ServiceRequestIn,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     store: IdempotencyStore = Depends(get_idempotency_store),
     events: EventPublisher = Depends(get_events_dep),
 ) -> dict[str, str]:
+    observe_tool_call("create_service_request")
     key = _idem_key(
         clinic_id=body.clinic_id,
         call_id=body.call_id,
@@ -576,7 +734,7 @@ async def create_service_request(
                 due_date=body.due_date,
             )
     except DomainError as exc:
-        raise _http(exc) from exc
+        raise _http(exc, "create_service_request") from exc
     result = {"request_id": str(request_id), "status": "pending"}
     if key is not None:
         await store.set(key[0], {"request_hash": key[1], "response": result})

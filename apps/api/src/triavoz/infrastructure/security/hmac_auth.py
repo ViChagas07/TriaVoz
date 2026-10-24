@@ -45,6 +45,30 @@ def verify(
     return hmac.compare_digest(expected, signature_header)
 
 
+def verify_any(
+    secrets: list[str],
+    timestamp_header: str | None,
+    signature_header: str | None,
+    body: bytes,
+    tolerance_seconds: int,
+    now: float | None = None,
+    nonce_header: str | None = None,
+) -> bool:
+    """Verify against the current secret first, then an optional previous one (rotation)."""
+    return any(
+        verify(
+            secret,
+            timestamp_header,
+            signature_header,
+            body,
+            tolerance_seconds,
+            now=now,
+            nonce_header=nonce_header,
+        )
+        for secret in secrets
+    )
+
+
 def replay_key(nonce: str, signature: str) -> str:
     digest = hashlib.sha256(f"{nonce}:{signature}".encode()).hexdigest()
     return f"triavoz:hmac:replay:{digest}"

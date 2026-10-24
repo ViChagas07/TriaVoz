@@ -52,19 +52,24 @@ class PgVoiceSessionRepository:
         room_name: str,
         caller_number: str | None,
         channel: str,
+        caller_verified: bool = False,
+        caller_identity_hash: bytes | None = None,
     ) -> UUID:
         result = (
             await self._s.execute(
                 text(
-                    "INSERT INTO calls (id, clinic_id, channel, room_name, caller_number) "
-                    "VALUES (:id, app_current_clinic_id(), :channel, :room, :caller) "
-                    "RETURNING id"
+                    "INSERT INTO calls (id, clinic_id, channel, room_name, caller_number, "
+                    "caller_verified, caller_identity_hash) "
+                    "VALUES (:id, app_current_clinic_id(), :channel, :room, :caller, "
+                    ":verified, :identity) RETURNING id"
                 ),
                 {
                     "id": call_id,
                     "channel": channel,
                     "room": room_name,
                     "caller": caller_number,
+                    "verified": caller_verified,
+                    "identity": caller_identity_hash,
                 },
             )
         ).scalar_one()
@@ -78,3 +83,26 @@ class PgVoiceSessionRepository:
             ),
             {"id": call_id},
         )
+
+    async def record_gatekeeper_block(self, reason: str) -> None:
+        """Aggregate refusals per clinic/day/reason (no caller identifier is stored).
+
+        Uses a savepoint: an observability write must never turn a safe refusal into a 500.
+        """
+        try:
+            async with self._s.begin_nested():
+                await self._s.execute(
+                    text(
+                        "INSERT INTO gatekeeper_block_stats (clinic_id, day, reason, count) "
+                        "SELECT app_current_clinic_id(), "
+                        "(now() AT TIME ZONE timezone)::date, :reason, 1 "
+                        "FROM clinics WHERE id = app_current_clinic_id() "
+                        "ON CONFLICT (clinic_id, day, reason) DO UPDATE "
+                        "SET count = gatekeeper_block_stats.count + 1, updated_at = now()"
+                    ),
+                    {"reason": reason[:80]},
+                )
+        except Exception:  # pragma: no cover - best effort by design
+            import logging
+
+            logging.getLogger("triavoz.voice").warning("gatekeeper block metric skipped")

@@ -106,14 +106,17 @@ class PgAuthRepository:
 
     async def revoke_token(
         self, token_id: UUID, reason: str, replaced_by_id: UUID | None = None
-    ) -> None:
-        await self._s.execute(
+    ) -> bool:
+        result = await self._s.execute(
             text(
                 "UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = :reason, "
                 "replaced_by_id = :replaced WHERE id = :id AND revoked_at IS NULL"
             ),
             {"id": token_id, "reason": reason, "replaced": replaced_by_id},
         )
+        # The caller uses the row count as an atomic compare-and-set: exactly one concurrent
+        # refresh may rotate a given token.
+        return bool(getattr(result, "rowcount", 0) or 0)
 
     async def revoke_family(self, family_id: UUID, reason: str) -> int:
         result = await self._s.execute(
@@ -132,4 +135,28 @@ class PgAuthRepository:
                 "WHERE token_hash = :hash AND revoked_at IS NULL"
             ),
             {"hash": token_hash, "reason": reason},
+        )
+
+    async def add_audit(
+        self,
+        *,
+        action: str,
+        resource_type: str,
+        resource_id: str | None,
+        user_id: UUID | None,
+        ip: str | None,
+    ) -> None:
+        await self._s.execute(
+            text(
+                "INSERT INTO audit_log "
+                "(clinic_id, user_id, action, resource_type, resource_id, ip) "
+                "VALUES (app_current_clinic_id(), :uid, :action, :rtype, :rid, :ip)"
+            ),
+            {
+                "uid": user_id,
+                "action": action,
+                "rtype": resource_type,
+                "rid": resource_id,
+                "ip": ip,
+            },
         )
