@@ -2,17 +2,17 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TriaVoz — recepção por voz com IA",
-    short_name: "TriaVoz",
+    name: "TriaVoice — recepção por voz com IA",
+    short_name: "TriaVoice",
     description: "Atende, entende e agenda por voz. Com dados reais da clínica.",
     start_url: "/",
     display: "standalone",
-    background_color: "#f4f8fa",
-    theme_color: "#0e7c86",
+    background_color: "#edf1f7",
+    theme_color: "#2563eb",
     lang: "pt-BR",
     icons: [
-      { src: "/icon.svg", sizes: "any", type: "image/svg+xml" },
-      { src: "/apple-icon", sizes: "180x180", type: "image/png" },
+      { src: "/icon.png", sizes: "512x512", type: "image/png" },
+      { src: "/apple-icon.png", sizes: "180x180", type: "image/png" },
     ],
   };
 }

@@ -3,7 +3,6 @@
 import {
   Bot,
   CalendarDays,
-  ChevronRight,
   LayoutDashboard,
   LogOut,
   Phone,
@@ -70,7 +69,7 @@ export function AppShell({
   }
 
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[16rem_1fr]">
+    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
       <a
         href="#main"
         className="sr-only z-50 rounded-md bg-primary px-3 py-2 text-primary-contrast focus:not-sr-only focus:fixed focus:left-3 focus:top-3"
@@ -82,11 +81,11 @@ export function AppShell({
         <div className="flex h-16 items-center border-b border-border px-5">
           <Logo />
         </div>
-        <div className="px-3 py-4">
-          <p className="px-2 pb-2 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-muted">
+        <div className="px-5 py-4">
+          <p className="font-mono text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-muted">
             {t("clinic")}
           </p>
-          <p className="truncate px-2 text-sm font-medium" title={clinicName}>
+          <p className="truncate text-sm font-semibold text-heading" title={clinicName}>
             {clinicName}
           </p>
         </div>
@@ -100,9 +99,9 @@ export function AppShell({
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={clsx(
-                  "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors",
+                  "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
                   active
-                    ? "bg-primary/10 font-medium text-primary-strong"
+                    ? "bg-primary/10 font-semibold text-primary-strong"
                     : "text-muted hover:bg-surface-2 hover:text-text",
                 )}
               >
@@ -110,30 +109,35 @@ export function AppShell({
                 <span className="flex-1">{t(item.key)}</span>
                 {item.key === "appointments" && pending > 0 && (
                   <span
-                    className="rounded-full bg-primary px-2 py-0.5 text-[0.68rem] font-semibold text-primary-contrast"
+                    className="rounded-full bg-primary px-2 py-0.5 font-mono text-[0.65rem] font-bold text-primary-contrast"
                     aria-label={`${pending} ${t("pending")}`}
                   >
                     {pending > 99 ? "99+" : pending}
                   </span>
                 )}
-                {active && <ChevronRight aria-hidden className="size-3.5 opacity-60" />}
               </Link>
             );
           })}
         </nav>
         <div className="m-3 rounded-2xl border border-border bg-surface-2/60 p-3">
           <div className="flex items-center gap-2.5">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary text-xs font-semibold text-primary-contrast">
+            <span
+              className="grid size-9 shrink-0 place-items-center rounded-full text-xs font-bold text-primary-contrast"
+              style={{
+                background:
+                  "linear-gradient(140deg, color-mix(in oklab, var(--grad-a) 85%, transparent), color-mix(in oklab, var(--grad-b) 85%, transparent))",
+              }}
+            >
               {initials(user.full_name)}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{user.full_name}</p>
-              <p className="truncate text-xs text-muted">{user.email}</p>
+              <p className="truncate text-sm font-semibold text-heading">{user.full_name}</p>
+              <p className="truncate font-mono text-[0.62rem] text-muted">{user.email}</p>
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between gap-1">
             <LocaleSwitcher />
-            <ThemeToggle compact />
+            <ThemeToggle />
           </div>
           <button
             type="button"
@@ -153,14 +157,14 @@ export function AppShell({
           <div className="flex items-center gap-1.5">
             {pending > 0 && (
               <span
-                className="rounded-full bg-primary px-2 py-0.5 text-[0.68rem] font-semibold text-primary-contrast"
+                className="rounded-full bg-primary px-2 py-0.5 font-mono text-[0.65rem] font-bold text-primary-contrast"
                 aria-label={`${pending} ${t("pending")}`}
               >
                 {pending > 99 ? "99+" : pending}
               </span>
             )}
             <LocaleSwitcher />
-            <ThemeToggle compact />
+            <ThemeToggle />
             <button
               type="button"
               onClick={signOut}
@@ -192,7 +196,7 @@ export function AppShell({
                   aria-current={active ? "page" : undefined}
                   className={clsx(
                     "flex flex-1 flex-col items-center gap-1 px-1 py-2.5 text-[0.68rem]",
-                    active ? "font-medium text-primary-strong" : "text-muted",
+                    active ? "font-semibold text-primary-strong" : "text-muted",
                   )}
                 >
                   <span className="relative">

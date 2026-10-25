@@ -8,10 +8,8 @@ import {
   Loader2,
   Mic,
   PhoneOff,
-  Radio,
   ShieldAlert,
   Volume2,
-  Wrench,
   X,
 } from "lucide-react";
 import {
@@ -80,10 +78,25 @@ function getDemoPhone(): string {
   }
 }
 
+/** +5571999123456 → "+55 71 99912-3456" (BR grouping; other formats are shown raw). */
+function formatPhoneDisplay(raw: string): string {
+  if (raw.startsWith("+55") && raw.length === 13) {
+    const ddd = raw.slice(3, 5);
+    const rest = raw.slice(5);
+    return `+55 ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+  }
+  return raw;
+}
+
+const WAVE_BARS = Array.from({ length: 21 }, (_, index) => index);
+
 export function DemoStage({ preview }: { preview?: string }) {
   const t = useTranslations("demo");
+  const a11y = useTranslations("a11y");
   const locale = useLocale();
   const [phase, setPhase] = useState<Phase>("idle");
+  const [consent, setConsent] = useState(false);
+  const [demoPhone, setDemoPhone] = useState<string | null>(null);
   const [orbSpeaking, setOrbSpeaking] = useState(false);
   const [errorKind, setErrorKind] = useState<ErrorKind | null>(null);
   const [fallbackReason, setFallbackReason] = useState<string | null>(null);
@@ -177,6 +190,10 @@ export function DemoStage({ preview }: { preview?: string }) {
       setErrorKind("network");
     }
   }, [previewPhase]);
+
+  useEffect(() => {
+    setDemoPhone(getDemoPhone());
+  }, []);
 
   const teardownAudio = useCallback(() => {
     for (const element of audioRef.current) {
@@ -277,6 +294,7 @@ export function DemoStage({ preview }: { preview?: string }) {
 
   async function start() {
     if (phase === "requesting" || phase === "connecting" || phase === "live") return;
+    if (!consent) return;
     setPhase("requesting");
     setErrorKind(null);
     setFallbackReason(null);
@@ -402,90 +420,121 @@ export function DemoStage({ preview }: { preview?: string }) {
                 : t("fallbackTitle")
             : phase === "error"
               ? t("fallbackTitle")
-              : t("start");
+              : t("ready");
 
   function toolLabel(name: string): string {
     if (TOOL_KEYS.has(name)) return t(`tool_${name}` as "tool_book_appointment");
     return name.replaceAll("_", " ");
   }
 
+  const canStart = consent && phase !== "requesting" && phase !== "connecting" && phase !== "live";
+
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start">
-      <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary-strong">
-            <Radio aria-hidden className="size-3.5" />
-            {t("eyebrow")}
-          </span>
-          {phase === "live" && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-st-done/10 px-2.5 py-1 text-xs font-medium text-st-done">
-              <span className="size-1.5 rounded-full bg-st-done" aria-hidden />
-              {reconnecting ? t("networkError") : t("remaining", { seconds: remaining })}
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
+      <section>
+        <div className="mb-4 flex flex-wrap gap-2" aria-hidden="true">
+          {[t("example1"), t("example2"), t("example3")].map((example) => (
+            <span
+              key={example}
+              className="rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[0.68rem] text-muted"
+            >
+              {example}
             </span>
-          )}
+          ))}
         </div>
 
-        <div className="mt-6 flex flex-col items-center text-center">
-          <VoiceOrb state={orbState} size="xl" label={statusLabel} />
-          <p className="mt-6 text-sm font-medium" aria-live="polite">
-            {phase === "live" && reconnecting ? t("networkError") : statusLabel}
-          </p>
-          {phase === "connecting" && <p className="mt-1 text-xs text-muted">{t("connectingHint")}</p>}
-          {previewActive && (
-            <span className="mt-2 rounded-full border border-border px-2 py-0.5 text-[0.62rem] uppercase tracking-wider text-muted">
-              {t("preview")}
-            </span>
-          )}
-
-          <div className="mt-6 flex w-full max-w-sm flex-col gap-2">
-            {(phase === "idle" || phase === "ended" || phase === "error") &&
-              (!previewActive || phase === "idle") && (
-              <button
-                type="button"
-                onClick={() => void start()}
-                className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong"
-              >
-                <Mic aria-hidden className="size-4" />
-                {phase === "ended" ? t("again") : phase === "error" ? t("retry") : t("start")}
-              </button>
-            )}
+        <section className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-10">
+          <div className="flex flex-col items-center text-center">
+            <VoiceOrb state={orbState} size="xl" label={statusLabel} />
+            <p className="mt-6 text-base font-semibold text-heading" aria-live="polite">
+              {phase === "live" && reconnecting ? t("networkError") : statusLabel}
+            </p>
+            {phase === "connecting" && <p className="mt-1 text-xs text-muted">{t("connectingHint")}</p>}
             {phase === "live" && (
-              <button
-                type="button"
-                onClick={() => void endCall()}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-st-urgent/35 bg-st-urgent/10 px-6 py-3 text-sm font-semibold text-st-urgent transition-colors hover:bg-st-urgent/15"
-              >
-                <PhoneOff aria-hidden className="size-4" />
-                {t("end")}
-              </button>
+              <p className="mt-1 font-mono text-[0.68rem] text-muted">
+                {reconnecting ? null : t("remaining", { seconds: remaining })}
+              </p>
             )}
-            {phase === "requesting" && (
-              <span className="inline-flex items-center justify-center gap-2 rounded-full border border-border px-6 py-3 text-sm text-muted">
-                <Loader2 aria-hidden className="size-4 animate-spin" />
-                {t("connecting")}
+            {previewActive && (
+              <span className="mt-2 rounded-full border border-border px-2 py-0.5 font-mono text-[0.62rem] uppercase tracking-wider text-muted">
+                {t("preview")}
               </span>
             )}
-            {audioBlocked && phase === "live" && (
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await roomRef.current?.startAudio();
-                    setAudioBlocked(false);
-                  } catch {
-                    setAudioBlocked(true);
-                  }
-                }}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-xs font-medium"
-              >
-                <Volume2 aria-hidden className="size-4" />
-                {t("enableAudio")}
-              </button>
-            )}
+
+            <div className="wave mt-5 w-40" data-active={phase === "live" ? "true" : "false"} aria-hidden="true">
+              {WAVE_BARS.map((bar) => (
+                <span key={bar} className="wave-bar" />
+              ))}
+            </div>
+
+            <div className="mt-6 w-full max-w-xs">
+              <p className="sr-only">{t("phoneHint")}</p>
+              <div className="rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-center font-mono text-sm text-muted">
+                {demoPhone ? formatPhoneDisplay(demoPhone) : "+55 71 99999-0000"}
+              </div>
+              <p className="mt-1.5 font-mono text-[0.62rem] text-muted">{t("phoneHint")}</p>
+            </div>
+
+            <label className="mt-4 flex max-w-sm cursor-pointer items-start gap-2.5 text-left">
+              <input
+                type="checkbox"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+                className="mt-0.5 size-4 shrink-0 cursor-pointer rounded accent-primary"
+              />
+              <span className="text-[0.72rem] leading-relaxed text-muted">{t("consent")}</span>
+            </label>
+
+            <div className="mt-5 flex w-full max-w-sm flex-col gap-2">
+              {(phase === "idle" || phase === "ended" || phase === "error") &&
+                (!previewActive || phase === "idle") && (
+                <button
+                  type="button"
+                  onClick={() => void start()}
+                  disabled={!canStart}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-6 py-3.5 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Mic aria-hidden className="size-4" />
+                  {phase === "ended" ? t("again") : phase === "error" ? t("retry") : t("start")}
+                </button>
+              )}
+              {phase === "live" && (
+                <button
+                  type="button"
+                  onClick={() => void endCall()}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-st-urgent/35 bg-st-urgent/10 px-6 py-3.5 text-sm font-semibold text-st-urgent transition-colors hover:bg-st-urgent/15"
+                >
+                  <PhoneOff aria-hidden className="size-4" />
+                  {t("end")}
+                </button>
+              )}
+              {phase === "requesting" && (
+                <span className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-6 py-3.5 text-sm text-muted">
+                  <Loader2 aria-hidden className="size-4 animate-spin" />
+                  {t("connecting")}
+                </span>
+              )}
+              {audioBlocked && phase === "live" && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await roomRef.current?.startAudio();
+                      setAudioBlocked(false);
+                    } catch {
+                      setAudioBlocked(true);
+                    }
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-xs font-medium"
+                >
+                  <Volume2 aria-hidden className="size-4" />
+                  {t("enableAudio")}
+                </button>
+              )}
+            </div>
+            <p className="mt-4 font-mono text-[0.62rem] text-muted">{t("cardNote")}</p>
           </div>
-          <p className="mt-3 max-w-sm text-xs text-muted">{t("disclaimer")}</p>
-          <p className="mt-1 text-[0.68rem] text-muted">{t("secure")}</p>
-        </div>
+        </section>
       </section>
 
       <section className="flex min-h-[28rem] flex-col gap-4">
@@ -522,7 +571,7 @@ export function DemoStage({ preview }: { preview?: string }) {
                   {emergency && (
                     <a
                       href="tel:192"
-                      className="inline-flex items-center gap-1.5 rounded-full bg-st-urgent px-3.5 py-2 text-xs font-semibold text-white"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-st-urgent px-3.5 py-2 text-xs font-semibold text-white"
                     >
                       <ShieldAlert aria-hidden className="size-3.5" />
                       {t("emergencyCall")}
@@ -532,7 +581,7 @@ export function DemoStage({ preview }: { preview?: string }) {
                     <button
                       type="button"
                       onClick={() => void start()}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-2 text-xs font-medium"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-2 text-xs font-medium"
                     >
                       {t("retry")}
                     </button>
@@ -561,7 +610,7 @@ export function DemoStage({ preview }: { preview?: string }) {
                 <button
                   type="button"
                   onClick={() => void start()}
-                  className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3.5 py-1.5 text-xs font-medium"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3.5 py-1.5 text-xs font-medium"
                 >
                   {t("retry")}
                 </button>
@@ -570,63 +619,19 @@ export function DemoStage({ preview }: { preview?: string }) {
           </div>
         )}
 
-        {phase === "ended" && (
-          <div className="rounded-2xl border border-border bg-surface p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">{t("endedTitle")}</h2>
-                <p className="mt-1 text-xs text-muted">{t("endedHint")}</p>
-              </div>
-              {callId && (
-                <Link
-                  href={`/chamadas/${callId}`}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3.5 py-2 text-xs font-semibold text-primary-contrast"
-                >
-                  {t("seeDashboard")}
-                  <ArrowRight aria-hidden className="size-3.5" />
-                </Link>
-              )}
-            </div>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
-              <div className="rounded-xl bg-surface-2/70 p-3">
-                <dt className="text-muted">{t("duration")}</dt>
-                <dd className="mt-0.5 text-sm font-medium">{formatDuration(durationSeconds)}</dd>
-              </div>
-              <div className="rounded-xl bg-surface-2/70 p-3">
-                <dt className="text-muted">{t("turns")}</dt>
-                <dd className="mt-0.5 text-sm font-medium">{turnCount}</dd>
-              </div>
-            </dl>
-            {bookingAt && (
-              <div className="mt-3 rounded-xl border border-st-done/30 bg-st-done/10 p-3 text-xs">
-                <p className="flex items-center gap-1.5 font-medium text-st-done">
-                  <Check aria-hidden className="size-3.5" />
-                  {t("bookingTitle")}
-                </p>
-                <p className="mt-1 text-muted">
-                  {formatDateTime(bookingAt, locale, timezone)} · {t("bookingHint")}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="flex min-h-0 flex-1 flex-col rounded-2xl border border-border bg-surface">
+        <div className="flex min-h-0 flex-col rounded-2xl border border-border bg-surface">
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-            <h2 className="flex items-center gap-2 text-sm font-semibold">
-              <Radio aria-hidden className="size-4 text-primary-strong" />
-              {t("captionsTitle")}
-            </h2>
+            <h2 className="flex items-center gap-2 text-sm font-semibold">{t("captionsTitle")}</h2>
             {phase === "live" && (
-              <span className="inline-flex items-center gap-1.5 text-[0.68rem] font-medium text-st-done">
+              <span className="inline-flex items-center gap-1.5 font-mono text-[0.65rem] font-semibold text-st-done">
                 <span className="size-1.5 animate-pulse rounded-full bg-st-done" aria-hidden />
-                {t("eyebrow")}
+                {a11y("live")}
               </span>
             )}
           </div>
           <div
             ref={captionRef}
-            className="transcript-scroll max-h-72 min-h-40 flex-1 space-y-3 overflow-y-auto p-4"
+            className="transcript-scroll max-h-64 min-h-36 flex-1 space-y-3 overflow-y-auto p-4"
             role="log"
             aria-live="polite"
             aria-label={t("captionsTitle")}
@@ -644,43 +649,76 @@ export function DemoStage({ preview }: { preview?: string }) {
                     : "rounded-bl-md bg-surface-2 text-text",
                 )}
               >
-                <span className="mb-0.5 block text-[0.62rem] font-semibold uppercase tracking-wider opacity-70">
+                <span className="mb-0.5 block font-mono text-[0.6rem] font-semibold uppercase tracking-wider opacity-70">
                   {caption.speaker === "you" ? t("you") : t("agent")}
                 </span>
                 {caption.text}
               </div>
             ))}
           </div>
+        </div>
 
-          <div className="border-t border-border p-3">
-            <h3 className="mb-2 flex items-center gap-1.5 px-1 text-[0.68rem] font-semibold uppercase tracking-wider text-muted">
-              <Wrench aria-hidden className="size-3.5" />
-              {t("toolsTitle")}
-            </h3>
+        <div className="rounded-2xl border border-border bg-surface">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold">{t("doingTitle")}</h2>
+          </div>
+          <div className="p-3">
             <ul className="space-y-1.5" aria-live="polite">
-              {tools.length === 0 && <li className="px-1 text-xs text-muted">—</li>}
+              {tools.length === 0 && (
+                <li className="px-1 py-1 text-xs text-muted">{t("doingEmpty")}</li>
+              )}
               {tools.map((tool) => (
                 <li
                   key={tool.id}
-                  className={clsx(
-                    "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs",
-                    tool.ok
-                      ? "border-st-done/25 bg-st-done/5 text-st-done"
-                      : "border-st-urgent/25 bg-st-urgent/5 text-st-urgent",
-                  )}
+                  className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-2/60 px-3 py-2 text-xs"
                 >
                   {tool.ok ? (
-                    <Check aria-hidden className="size-3.5" />
+                    <Check aria-hidden className="mt-0.5 size-3.5 text-st-done" />
                   ) : (
-                    <X aria-hidden className="size-3.5" />
+                    <X aria-hidden className="mt-0.5 size-3.5 text-st-urgent" />
                   )}
-                  <span className="flex-1">{toolLabel(tool.name)}</span>
-                  <span className="text-[0.62rem] uppercase tracking-wider opacity-70">
+                  <span className="min-w-0 flex-1">
+                    <span className={clsx("block font-medium", tool.ok ? "text-st-done" : "text-st-urgent")}>
+                      {toolLabel(tool.name)}
+                    </span>
+                    <span className="mt-0.5 block truncate font-mono text-[0.6rem] text-muted">
+                      {tool.name}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[0.6rem] uppercase tracking-wider text-muted">
                     {tool.ok ? t("toolDone") : t("toolError")}
                   </span>
                 </li>
               ))}
             </ul>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface">
+          <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold">{t("resultTitle")}</h2>
+          </div>
+          <div className="p-4">
+            {phase === "ended" ? (
+              <>
+                <h3 className="text-sm font-semibold">{t("endedTitle")}</h3>
+                <p className="mt-1 text-xs text-muted">{t("endedHint")}</p>
+                <dl className="mt-3 grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-surface-2/70 p-3">
+                    <dt className="text-muted">{t("duration")}</dt>
+                    <dd className="mt-0.5 font-mono text-sm font-medium">
+                      {formatDuration(durationSeconds)}
+                    </dd>
+                  </div>
+                  <div className="rounded-xl bg-surface-2/70 p-3">
+                    <dt className="text-muted">{t("turns")}</dt>
+                    <dd className="mt-0.5 font-mono text-sm font-medium">{turnCount}</dd>
+                  </div>
+                </dl>
+              </>
+            ) : (
+              <p className="py-2 text-xs text-muted">{t("resultEmpty")}</p>
+            )}
             {bookingAt && (
               <div className="mt-3 rounded-xl border border-st-done/30 bg-st-done/10 p-3 text-xs">
                 <p className="flex items-center gap-1.5 font-medium text-st-done">
@@ -690,6 +728,15 @@ export function DemoStage({ preview }: { preview?: string }) {
                 <p className="mt-1 text-muted">{formatDateTime(bookingAt, locale, timezone)}</p>
                 <p className="mt-0.5 text-[0.68rem] text-muted">{t("bookingHint")}</p>
               </div>
+            )}
+            {phase === "ended" && callId && (
+              <Link
+                href={`/chamadas/${callId}`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-2 text-xs font-semibold text-primary-contrast"
+              >
+                {t("seeDashboard")}
+                <ArrowRight aria-hidden className="size-3.5" />
+              </Link>
             )}
           </div>
         </div>

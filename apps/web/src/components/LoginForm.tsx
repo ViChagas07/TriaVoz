@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Building2, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, type FormEvent } from "react";
@@ -59,57 +59,22 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
   }
 
   return (
-    <div className="mx-auto grid w-full max-w-5xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-      <section className="hidden lg:block">
-        <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary-strong">
-          <ShieldCheck aria-hidden className="size-3.5" />
-          {t("demoHint")}
-        </p>
-        <h2 className="text-balance text-4xl font-semibold tracking-tight">
-          {t("title")}
-        </h2>
-        <p className="mt-4 max-w-md text-sm leading-relaxed text-muted">{t("subtitle")}</p>
-        <div className="mt-8 grid gap-2">
-          {DEMO_ACCOUNTS.map((account, index) => (
-            <button
-              key={account.key}
-              type="button"
-              onClick={() => useDemo(index)}
-              className="group flex items-center justify-between rounded-xl border border-border bg-surface px-4 py-3 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
-            >
-              <span>
-                <span className="block text-sm font-medium">{account.email}</span>
-                <span className="block text-xs text-muted">
-                  {account.clinic} · {t(account.labelKey)}
-                </span>
-              </span>
-              <ArrowRight
-                aria-hidden
-                className="size-4 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-primary-strong"
-              />
-            </button>
-          ))}
-        </div>
-      </section>
-
+    <div>
       <form
         onSubmit={onSubmit}
         method="post"
         data-hydrated={hydrated ? "true" : "false"}
-        className="rounded-2xl border border-border bg-surface p-6 shadow-card sm:p-8"
+        className="rounded-3xl border border-border bg-surface p-6 shadow-card sm:p-8"
         aria-describedby={error ? "login-error" : undefined}
       >
         <div className="mb-6">
-          <h1 className="text-xl font-semibold tracking-tight">{t("title")}</h1>
-          <p className="mt-1 text-sm text-muted">{t("subtitle")}</p>
+          <h1 className="display-title text-2xl sm:text-[1.7rem]">{t("title")}</h1>
+          <p className="mt-1.5 text-sm text-muted">{t("subtitle")}</p>
         </div>
 
         <div className="space-y-4">
-          <label className="block text-sm">
-            <span className="mb-1.5 flex items-center gap-1.5 font-medium">
-              <Building2 aria-hidden className="size-3.5 text-muted" />
-              {t("clinic")}
-            </span>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-bold text-heading">{t("clinic")}</span>
             <input
               required
               name="clinic"
@@ -117,15 +82,12 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
               onChange={(event) => setClinic(event.target.value)}
               autoComplete="organization"
               placeholder={t("clinicPlaceholder")}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-primary"
             />
           </label>
 
-          <label className="block text-sm">
-            <span className="mb-1.5 flex items-center gap-1.5 font-medium">
-              <Mail aria-hidden className="size-3.5 text-muted" />
-              {t("email")}
-            </span>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-bold text-heading">{t("email")}</span>
             <input
               required
               type="email"
@@ -133,15 +95,13 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               autoComplete="username"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none transition-colors focus:border-primary"
+              placeholder="voce@clinica.com"
+              className="w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 text-sm outline-none transition-colors placeholder:text-muted/60 focus:border-primary"
             />
           </label>
 
-          <label className="block text-sm">
-            <span className="mb-1.5 flex items-center gap-1.5 font-medium">
-              <Lock aria-hidden className="size-3.5 text-muted" />
-              {t("password")}
-            </span>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-bold text-heading">{t("password")}</span>
             <span className="relative block">
               <input
                 required
@@ -150,13 +110,14 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 autoComplete="current-password"
-                className="w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-11 text-sm outline-none transition-colors focus:border-primary"
+                placeholder="••••••••"
+                className="w-full rounded-lg border border-border bg-surface-2 px-3.5 py-2.5 pr-11 text-sm outline-none transition-colors focus:border-primary"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((value) => !value)}
                 aria-label={showPassword ? t("hidePassword") : t("showPassword")}
-                className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted hover:bg-surface-2"
+                className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-md text-muted hover:bg-surface-2 hover:text-text"
               >
                 {showPassword ? (
                   <EyeOff aria-hidden className="size-4" />
@@ -182,21 +143,29 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
           type="submit"
           disabled={submitting || !hydrated}
           className={clsx(
-            "mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong",
-            submitting && "cursor-wait opacity-70",
+            "mt-6 flex w-full items-center justify-center rounded-lg bg-primary px-4 py-3 text-sm font-bold text-primary-contrast transition-colors hover:bg-primary-strong disabled:cursor-not-allowed disabled:opacity-60",
+            submitting && "cursor-wait",
           )}
         >
           {submitting ? t("submitting") : t("submit")}
-          {!submitting && <ArrowRight aria-hidden className="size-4" />}
         </button>
-
-        <div className="mt-5 flex items-center justify-between text-xs text-muted lg:hidden">
-          <span>{t("demoHint")}</span>
-          <button type="button" onClick={() => useDemo(0)} className="font-medium text-primary-strong">
-            {t("admin")}
-          </button>
-        </div>
       </form>
+
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+        <span className="font-mono text-[0.65rem] uppercase tracking-[0.14em] text-muted">
+          {t("demoHint")}
+        </span>
+        {DEMO_ACCOUNTS.map((account, index) => (
+          <button
+            key={account.key}
+            type="button"
+            onClick={() => useDemo(index)}
+            className="rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[0.65rem] text-muted transition-colors hover:border-primary/40 hover:text-primary-strong"
+          >
+            {account.email}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

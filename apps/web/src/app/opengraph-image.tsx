@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "TriaVoz — recepção por voz com IA para clínicas";
+export const alt = "TriaVoice — recepção por voz com IA para clínicas";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -14,8 +14,8 @@ export default function OpengraphImage() {
           display: "flex",
           position: "relative",
           overflow: "hidden",
-          background: "linear-gradient(135deg, #071923 0%, #0b2f3d 55%, #0e7c86 100%)",
-          color: "#e8f1f5",
+          background: "linear-gradient(135deg, #0a1524 0%, #10294f 55%, #2563eb 130%)",
+          color: "#edf1f7",
           padding: "64px",
           fontFamily: "sans-serif",
         }}
@@ -28,7 +28,7 @@ export default function OpengraphImage() {
             width: 560,
             height: 560,
             borderRadius: 9999,
-            background: "radial-gradient(circle, rgba(56,189,248,.55), rgba(56,189,248,0) 70%)",
+            background: "radial-gradient(circle, rgba(52,211,153,.45), rgba(14,165,233,0) 70%)",
           }}
         />
         <div style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", width: "100%" }}>
@@ -42,24 +42,30 @@ export default function OpengraphImage() {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#04241f",
+                color: "#05202b",
                 fontSize: 28,
                 fontWeight: 700,
               }}
             >
               T
             </div>
-            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>TriaVoz</div>
+            <div style={{ display: "flex", fontSize: 28, fontWeight: 700, letterSpacing: -0.5 }}>
+              <span style={{ color: "#f2f6fc" }}>Tria</span>
+              <span style={{ color: "#38bdf8" }}>Voice</span>
+            </div>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 820 }}>
-            <div style={{ fontSize: 62, fontWeight: 700, lineHeight: 1.05, letterSpacing: -2 }}>
-              A recepção que atende, entende e agenda por voz.
+            <div style={{ fontSize: 62, fontWeight: 700, lineHeight: 1.05, letterSpacing: -2, color: "#f2f6fc" }}>
+              A recepção que
             </div>
-            <div style={{ fontSize: 26, color: "#b7d2de", lineHeight: 1.35 }}>
+            <div style={{ fontSize: 62, fontWeight: 700, lineHeight: 1.05, letterSpacing: -2, color: "#34d399" }}>
+              ouve, entende e agenda.
+            </div>
+            <div style={{ fontSize: 26, color: "#9db2c0", lineHeight: 1.35 }}>
               Agenda real, transcrição, handoff humano e SAMU 192 para emergências.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 28, fontSize: 20, color: "#9db2c0" }}>
+          <div style={{ display: "flex", gap: 28, fontSize: 20, color: "#8ea2bd" }}>
             <span>PostgreSQL + RLS</span>
             <span>LiveKit</span>
             <span>Next.js</span>

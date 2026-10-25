@@ -4,29 +4,32 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import {
   ArrowRight,
-  CalendarCheck2,
-  Check,
-  HeartHandshake,
-  LockKeyhole,
-  MessageSquareText,
-  PhoneCall,
+  AudioLines,
+  CalendarX2,
+  ChevronDown,
+  Database,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
+  Zap,
 } from "lucide-react";
+import { DashboardPreview } from "@/components/DashboardPreview";
+import { Logo } from "@/components/Logo";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { PublicHeader } from "@/components/PublicHeader";
 import { ScopedMessages } from "@/components/ScopedMessages";
-import { VoiceOrb } from "@/components/VoiceOrb";
-import { Logo } from "@/components/Logo";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
-const FAQ_KEYS = [1, 2, 3, 4] as const;
+const REPO_URL = "https://github.com/ViChagas07/TriaVoz";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("landing");
+  const title = `${t("title")} ${t("titleGrad")}`;
   return {
-    title: t("title"),
+    title,
     description: t("subtitle"),
     alternates: { canonical: "/" },
-    openGraph: { title: t("title"), description: t("subtitle"), url: "/" },
+    openGraph: { title, description: t("subtitle"), url: "/" },
   };
 }
 
@@ -34,7 +37,7 @@ export default async function Landing() {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
   const t = await getTranslations("landing");
   const nav = await getTranslations("nav");
-  const faqs = FAQ_KEYS.map((index) => ({
+  const faqs = [1, 2, 3, 4, 5, 6].map((index) => ({
     question: t(`faq${index}Q` as "faq1Q"),
     answer: t(`faq${index}A` as "faq1A"),
   }));
@@ -42,16 +45,12 @@ export default async function Landing() {
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
-      name: "TriaVoz",
+      name: "TriaVoice",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web",
       description: t("subtitle"),
       offers: { "@type": "Offer", price: "0", priceCurrency: "BRL" },
-      featureList: [
-        t("how2Title"),
-        t("feature2Title"),
-        t("feature3Title"),
-      ],
+      featureList: [t("sec1Title"), t("sec2Title"), t("sec3Title"), t("sec4Title")],
       inLanguage: ["pt-BR", "en"],
     },
     {
@@ -65,197 +64,334 @@ export default async function Landing() {
     },
   ];
 
+  const stack = ["LiveKit", "Deepgram", "Claude", "ElevenLabs", "FastAPI", "PostgreSQL RLS", "Next.js"];
+  const steps = [1, 2, 3].map((step) => ({
+    number: `0${step}`,
+    title: t(`step${step}Title` as "step1Title"),
+    body: t(`step${step}Body` as "step1Body"),
+  }));
+  const STEP_ICONS = [AudioLines, Sparkles, Database];
+  const guards = [1, 2, 3, 4].map((index) => ({
+    title: t(`sec${index}Title` as "sec1Title"),
+    body: t(`sec${index}Body` as "sec1Body"),
+  }));
+  const GUARD_ICONS = [Zap, CalendarX2, ShieldCheck, SlidersHorizontal];
+  const archNodes = [1, 2, 3, 4, 5].map((index) => ({
+    name: t(`arch${index}Name` as "arch1Name"),
+    sub: t(`arch${index}Sub` as "arch1Sub"),
+  }));
+  const stats = [
+    { value: "< 1 s", label: t("stat1Label") },
+    { value: "0", label: t("stat2Label") },
+    { value: "100%", label: t("stat3Label") },
+  ];
+
   return (
     <ScopedMessages namespaces={["landing", "nav", "common", "a11y", "theme"]}>
-      <div className="min-h-dvh overflow-x-clip bg-[radial-gradient(circle_at_10%_-5%,color-mix(in_oklab,var(--voice)_16%,transparent),transparent_36%),radial-gradient(circle_at_95%_20%,color-mix(in_oklab,var(--primary)_13%,transparent),transparent_42%)]">
+      <div className="min-h-dvh overflow-x-clip">
         <PublicHeader />
 
         <main id="main">
-          <section className="mx-auto grid w-full max-w-6xl items-center gap-12 px-4 pb-16 pt-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:pb-24 lg:pt-20">
+          {/* Hero */}
+          <section className="mx-auto grid w-full max-w-6xl items-center gap-10 px-4 pb-16 pt-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:pb-24 lg:pt-20">
             <div>
-              <p className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary-strong">
-                <Sparkles aria-hidden className="size-3.5" />
-                {t("eyebrow")}
+              <p className="inline-block rounded-md border border-primary/15 bg-primary/5 px-2.5 py-1">
+                <span className="eyebrow">{t("eyebrow")}</span>
               </p>
-              <h1 className="text-balance mt-5 text-4xl font-semibold leading-[1.05] tracking-tight sm:text-6xl">
-                {t("title")}
+              <h1 className="display-title text-balance mt-5 text-4xl leading-[1.04] sm:text-5xl lg:text-[3.6rem]">
+                {t("title")}{" "}
+                <span className="text-grad">{t("titleGrad")}</span>
               </h1>
-              <p className="mt-5 max-w-xl text-base leading-relaxed text-muted sm:text-lg">
+              <p className="mt-5 max-w-xl text-base leading-relaxed text-muted">
                 {t("subtitle")}
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Link
                   href="/demo"
-                  className="group inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-3 text-sm font-semibold text-primary-contrast transition-colors hover:bg-primary-strong"
                 >
-                  <PhoneCall aria-hidden className="size-4" />
                   {t("ctaDemo")}
-                  <ArrowRight
-                    aria-hidden
-                    className="size-4 transition-transform group-hover:translate-x-0.5"
-                  />
+                  <ArrowRight aria-hidden className="size-4" />
                 </Link>
                 <Link
                   href="/login"
-                  className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-3 text-sm font-medium text-text transition-colors hover:border-primary/40 hover:text-primary-strong"
+                  className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-5 py-3 text-sm font-semibold text-heading transition-colors hover:border-primary/40 hover:text-primary-strong"
                 >
-                  {t("ctaLogin")}
+                  {t("ctaPanel")}
                 </Link>
               </div>
-              <p className="mt-4 text-xs text-muted">{t("note")}</p>
-
-              <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 text-xs text-muted">
-                <li className="inline-flex items-center gap-1.5">
-                  <ShieldCheck aria-hidden className="size-3.5 text-primary-strong" />
-                  {t("trusted")}
-                </li>
-                <li className="inline-flex items-center gap-1.5">
-                  <LockKeyhole aria-hidden className="size-3.5 text-primary-strong" />
-                  {t("trustedBody")}
-                </li>
-                <li className="inline-flex items-center gap-1.5">
-                  <HeartHandshake aria-hidden className="size-3.5 text-primary-strong" />
-                  SAMU 192
-                </li>
-              </ul>
+              <p className="mt-4 font-mono text-[0.68rem] text-muted">{t("note")}</p>
             </div>
 
-            <div className="relative mx-auto w-full max-w-md">
-              <div className="absolute -inset-8 -z-10 rounded-full bg-voice/10 blur-3xl" aria-hidden />
-              <div className="rounded-[2rem] border border-border bg-surface/90 p-6 shadow-card backdrop-blur sm:p-8">
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-2 text-xs font-medium text-muted">
-                    <span className="size-2 rounded-full bg-st-done" aria-hidden />
-                    {t("liveLabel")}
-                  </span>
-                  <Logo compact />
-                </div>
-                <div className="mt-4 flex justify-center py-3">
-                  <VoiceOrb state="listening" size="lg" label={t("how1Title")} />
-                </div>
-                <div className="mt-2 space-y-2">
-                  <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-primary px-3.5 py-2 text-xs text-primary-contrast">
-                    {t("demoLine1")}
-                  </div>
-                  <div className="max-w-[90%] rounded-2xl rounded-bl-md bg-surface-2 px-3.5 py-2 text-xs">
-                    {t("demoLine2")}
-                  </div>
-                </div>
-                <div className="mt-5 grid grid-cols-3 gap-2 text-center text-[0.65rem] text-muted">
-                  <div className="rounded-lg bg-surface-2/70 px-2 py-2">
-                    <CalendarCheck2 aria-hidden className="mx-auto mb-1 size-3.5 text-primary-strong" />
-                    {t("how2Title")}
-                  </div>
-                  <div className="rounded-lg bg-surface-2/70 px-2 py-2">
-                    <MessageSquareText aria-hidden className="mx-auto mb-1 size-3.5 text-primary-strong" />
-                    {t("how3Title")}
-                  </div>
-                  <div className="rounded-lg bg-surface-2/70 px-2 py-2">
-                    <ShieldCheck aria-hidden className="mx-auto mb-1 size-3.5 text-primary-strong" />
-                    {t("feature2Title")}
-                  </div>
-                </div>
+            <div className="relative mx-auto flex w-full max-w-md items-center justify-center py-10">
+              <div
+                aria-hidden
+                className="absolute inset-0 rounded-full bg-[radial-gradient(circle,color-mix(in_oklab,var(--orb-b)_24%,transparent),transparent_66%)] blur-2xl"
+              />
+              <div className="orb relative size-80 sm:size-96">
+                <span className="orb-halo" aria-hidden />
+                <span className="orb-halo-2" aria-hidden />
+                <span className="hero-orb size-[64%]" aria-hidden />
               </div>
+              <span className="float-pill absolute left-0 top-16 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[0.65rem] text-muted shadow-card sm:left-2">
+                {t("pillChecking")}
+              </span>
+              <span
+                className="float-pill absolute bottom-10 left-2 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[0.65rem] text-muted shadow-card sm:left-8"
+                style={{ animationDelay: "-2.2s" }}
+              >
+                {t("pillLatency")}
+              </span>
+              <span
+                className="float-pill absolute right-0 top-24 rounded-full border border-border bg-surface px-3 py-1.5 font-mono text-[0.65rem] text-muted shadow-card sm:-right-2"
+                style={{ animationDelay: "-4.1s" }}
+              >
+                {t("pillConfirmed")}
+              </span>
             </div>
           </section>
 
+          {/* Built with */}
           <section className="border-y border-border bg-surface/60">
-            <div className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-              <div className="max-w-2xl">
-                <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-                  {t("howTitle")}
-                </h2>
-                <p className="mt-2 text-sm text-muted">{t("howSubtitle")}</p>
-              </div>
-              <ol className="mt-8 grid gap-4 md:grid-cols-3">
-                {[1, 2, 3].map((step) => (
-                  <li key={step} className="rounded-2xl border border-border bg-surface p-5">
-                    <span className="grid size-8 place-items-center rounded-full bg-primary-soft text-xs font-semibold text-primary-strong">
-                      {step}
-                    </span>
-                    <h3 className="mt-4 text-sm font-semibold">
-                      {t(`how${step}Title` as "how1Title")}
-                    </h3>
-                    <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                      {t(`how${step}Body` as "how1Body")}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </section>
-
-          <section className="mx-auto w-full max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-            <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-              {t("featureTitle")}
-            </h2>
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
-              {[1, 2, 3].map((index) => (
-                <div key={index} className="rounded-2xl border border-border bg-surface p-5">
-                  <Check aria-hidden className="size-5 text-primary-strong" />
-                  <h3 className="mt-4 text-sm font-semibold">
-                    {t(`feature${index}Title` as "feature1Title")}
-                  </h3>
-                  <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                    {t(`feature${index}Body` as "feature1Body")}
-                  </p>
-                </div>
+            <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-4 sm:px-6">
+              <span className="eyebrow">{t("stackLabel")}</span>
+              {stack.map((item) => (
+                <span key={item} className="text-[0.8rem] font-medium text-muted">
+                  {item}
+                </span>
               ))}
             </div>
           </section>
 
-          <section className="border-t border-border bg-surface/60">
-            <div className="mx-auto w-full max-w-4xl px-4 py-14 sm:px-6 sm:py-20">
-              <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-                {t("faqTitle")}
-              </h2>
-              <div className="mt-6 divide-y divide-border rounded-2xl border border-border bg-surface">
-                {faqs.map((faq) => (
-                  <details key={faq.question} className="group px-5 py-4">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium">
-                      {faq.question}
+          {/* How it works */}
+          <section id="como-funciona" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-14 sm:px-6 sm:py-20">
+            <p className="eyebrow">{t("howEyebrow")}</p>
+            <h2 className="display-title text-balance mt-3 text-3xl sm:text-4xl">
+              {t("howTitle")}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
+              {t("howSubtitle")}
+            </p>
+            <ol className="mt-10 grid gap-5 md:grid-cols-3">
+              {steps.map((step, index) => {
+                const Icon = STEP_ICONS[index] ?? Sparkles;
+                return (
+                  <li
+                    key={step.title}
+                    className="relative rounded-2xl border border-border bg-surface p-6"
+                  >
+                    {index > 0 && (
                       <span
                         aria-hidden
-                        className="text-muted transition-transform group-open:rotate-45"
+                        className="absolute -left-[26px] top-1/2 z-10 hidden size-8 -translate-y-1/2 place-items-center rounded-full border border-border bg-background text-muted md:grid"
                       >
-                        +
+                        <ArrowRight className="size-3.5" />
                       </span>
-                    </summary>
-                    <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{faq.answer}</p>
-                  </details>
+                    )}
+                    <div className="flex items-start justify-between">
+                      <span className="grid size-11 place-items-center rounded-xl bg-[linear-gradient(135deg,color-mix(in_oklab,var(--grad-a)_18%,transparent),color-mix(in_oklab,var(--grad-b)_16%,transparent))] text-primary-strong">
+                        <Icon aria-hidden className="size-5" />
+                      </span>
+                      <span className="font-mono text-xs text-muted">{step.number}</span>
+                    </div>
+                    <h3 className="display-title mt-5 text-lg">{step.title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-muted">{step.body}</p>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+
+          {/* Product in action */}
+          <section id="produto" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-10 sm:px-6 sm:py-14">
+            <p className="eyebrow">{t("productEyebrow")}</p>
+            <h2 className="display-title text-balance mt-3 max-w-xl text-3xl sm:text-4xl">
+              {t("productTitle")}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
+              {t("productSubtitle")}
+            </p>
+            <div className="mt-10">
+              <DashboardPreview t={(key) => t(key as "previewLive")} />
+            </div>
+          </section>
+
+          {/* Built like production */}
+          <section id="seguranca" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-14 sm:px-6 sm:py-20">
+            <p className="eyebrow">{t("securityEyebrow")}</p>
+            <h2 className="display-title text-balance mt-3 text-3xl sm:text-4xl">
+              {t("securityTitle")}
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted sm:text-base">
+              {t("securitySubtitle")}
+            </p>
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {guards.map((guard, index) => {
+                const Icon = GUARD_ICONS[index] ?? ShieldCheck;
+                return (
+                  <div key={guard.title} className="rounded-2xl border border-border bg-surface p-6">
+                    <Icon aria-hidden className="size-5 text-primary-strong" />
+                    <h3 className="mt-4 text-sm font-bold text-heading">{guard.title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-muted">{guard.body}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* Illustrative numbers */}
+          <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+            <div
+              className="rounded-3xl px-6 py-10 sm:px-12"
+              style={{ background: "var(--navy)" }}
+            >
+              <p className="font-mono text-[0.72rem] font-bold uppercase tracking-[0.22em] text-white/55">
+                {t("statsLabel")}
+              </p>
+              <dl className="mt-6 grid gap-8 sm:grid-cols-3">
+                {stats.map((stat) => (
+                  <div key={stat.label}>
+                    <dt className="sr-only">{stat.label}</dt>
+                    <dd>
+                      <span
+                        className="block font-mono text-4xl font-bold sm:text-5xl"
+                        style={{ color: "var(--grad-a)" }}
+                      >
+                        {stat.value}
+                      </span>
+                      <span className="mt-2 block text-sm text-white/65">{stat.label}</span>
+                    </dd>
+                  </div>
                 ))}
+              </dl>
+            </div>
+          </section>
+
+          {/* Architecture */}
+          <section id="arquitetura" className="mx-auto w-full max-w-6xl scroll-mt-20 px-4 py-14 sm:px-6 sm:py-20">
+            <p className="eyebrow">{t("archEyebrow")}</p>
+            <h2 className="display-title text-balance mt-3 max-w-lg text-3xl sm:text-4xl">
+              {t("archTitle")}
+            </h2>
+            <div className="mt-10 rounded-3xl border border-border bg-surface p-6 sm:p-10">
+              <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
+                {archNodes.map((node, index) => (
+                  <div key={node.name} className="flex flex-1 flex-col items-center lg:flex-row">
+                    {index > 0 && (
+                      <ArrowRight
+                        aria-hidden
+                        className="mb-2 size-4 shrink-0 rotate-90 text-muted lg:mb-0 lg:mr-3 lg:rotate-0"
+                      />
+                    )}
+                    <div
+                      className={`w-full flex-1 rounded-2xl border bg-surface px-4 py-4 text-center ${
+                        index % 2 === 0
+                          ? "border-[color-mix(in_oklab,var(--grad-a)_55%,transparent)]"
+                          : "border-[color-mix(in_oklab,var(--grad-b)_55%,transparent)]"
+                      }`}
+                    >
+                      <p className="text-sm font-bold text-heading">{node.name}</p>
+                      <p className="mt-0.5 font-mono text-[0.62rem] text-muted">{node.sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-6 flex flex-col items-center gap-1">
+                <svg
+                  viewBox="0 0 200 24"
+                  className="h-6 w-44 text-muted"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M10 2 C 60 22, 140 22, 190 2"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <p className="font-mono text-[0.65rem] text-muted">{t("archDash")}</p>
               </div>
             </div>
           </section>
 
-          <section className="mx-auto w-full max-w-4xl px-4 py-14 text-center sm:px-6">
-            <div className="rounded-3xl border border-primary/25 bg-primary/5 px-6 py-10">
-              <h2 className="text-balance text-2xl font-semibold tracking-tight">{t("ctaDemo")}</h2>
-              <p className="mx-auto mt-2 max-w-lg text-sm text-muted">{t("note")}</p>
-              <div className="mt-6 flex flex-wrap justify-center gap-3">
-                <Link
-                  href="/demo"
-                  className="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-contrast"
+          {/* FAQ */}
+          <section id="faq" className="mx-auto w-full max-w-4xl scroll-mt-20 px-4 py-14 sm:px-6 sm:py-20">
+            <p className="eyebrow">{t("faqEyebrow")}</p>
+            <h2 className="display-title text-balance mt-3 max-w-lg text-3xl sm:text-4xl">
+              {t("faqTitle")}
+            </h2>
+            <div className="mt-10 space-y-3">
+              {faqs.map((faq) => (
+                <details
+                  key={faq.question}
+                  className="group rounded-xl border border-border bg-surface px-5 py-4"
                 >
-                  <PhoneCall aria-hidden className="size-4" />
-                  {nav("demo")}
-                </Link>
-                <Link
-                  href="/login"
-                  className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-5 py-3 text-sm font-medium"
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-bold text-heading">
+                    {faq.question}
+                    <ChevronDown
+                      aria-hidden
+                      className="size-4 shrink-0 text-muted transition-transform group-open:rotate-180"
+                    />
+                  </summary>
+                  <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">{faq.answer}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+
+          {/* CTA band */}
+          <section className="mx-auto w-full max-w-6xl px-4 pb-16 pt-4 sm:px-6 sm:pb-20">
+            <div
+              className="flex flex-col gap-6 rounded-3xl px-6 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-12"
+              style={{ background: "var(--band-bg)" }}
+            >
+              <div>
+                <p
+                  className="font-mono text-[0.72rem] font-bold uppercase tracking-[0.22em]"
+                  style={{ color: "var(--band-eyebrow)" }}
                 >
-                  {t("ctaLogin")}
-                </Link>
+                  {t("ctaEyebrow")}
+                </p>
+                <h2
+                  className="display-title mt-2 max-w-md text-2xl sm:text-3xl"
+                  style={{ color: "var(--band-heading)" }}
+                >
+                  {t("ctaTitle")}
+                </h2>
               </div>
+              <Link
+                href="/demo"
+                className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg px-5 py-3 text-sm font-semibold transition-colors sm:self-center"
+                style={{
+                  background: "var(--band-btn-bg)",
+                  color: "var(--band-btn-text)",
+                }}
+              >
+                {t("ctaButton")}
+                <ArrowRight aria-hidden className="size-4" />
+              </Link>
             </div>
           </section>
         </main>
 
         <footer className="border-t border-border">
-          <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-xs text-muted sm:flex-row sm:px-6">
-            <Logo compact />
-            <p>{t("footer")}</p>
-            <p>{t("trustedBody")}</p>
+          <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6">
+            <Logo />
+            <p className="text-center text-xs text-muted">{t("footerCredit")}</p>
+            <div className="flex items-center gap-2">
+              <a
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center rounded-full px-2 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-primary-strong"
+              >
+                GitHub
+              </a>
+              <LocaleSwitcher />
+              <ThemeToggle />
+            </div>
           </div>
         </footer>
       </div>

@@ -73,10 +73,11 @@ test("demo page connects with the stubbed LiveKit room and shows captions", asyn
   });
 
   await page.goto("/demo");
+  await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: "Start conversation" }).click();
 
   await expect(page.getByText("You can talk").first()).toBeVisible();
-  const log = page.getByRole("log", { name: "Live conversation" });
+  const log = page.getByRole("log", { name: "Live captions" });
   await expect(log.getByText("Olá! Sou a assistente virtual da Clínica Horizonte.")).toBeVisible();
   await expect(log.getByText("Quero marcar uma consulta amanhã de manhã.")).toBeVisible();
   await expect(page.getByText("Checked availability")).toBeVisible();

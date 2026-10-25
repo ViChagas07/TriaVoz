@@ -1,81 +1,125 @@
 @import "tailwindcss";
 
-/* ───────── TriaVoz design tokens ─────────
-   Brand: deep teal + cyan voice accent. Status colors are "triage" colors.
+/* ───────── TriaVoice design tokens ─────────
+   Template: light blue-gray canvas, white cards, deep-navy display headings,
+   royal-blue actions (light) / teal actions (dark), emerald→cyan voice gradient.
    Contrast: small text never uses --voice; use --text / --text-muted / --primary-strong.
    AA pairs in both themes: text/background, muted/surface, primary-contrast/primary. */
 :root {
   color-scheme: light;
-  --background: #f4f8fa;
+  --background: #edf1f7;
   --surface: #ffffff;
-  --surface-2: #eef4f7;
-  --border: #dbe5ec;
-  --text: #0a2736;
-  --text-muted: #526472;
-  --primary: #0e7c86;
-  --primary-strong: #0a5e66;
-  --primary-soft: #d9f0f1;
+  --surface-2: #f5f8fc;
+  --border: #dbe3ed;
+  --text: #22344f;
+  --heading: #132e5e;
+  --text-muted: #5d6c81;
+  --primary: #2563eb;
+  --primary-strong: #1d4ed8;
+  --primary-soft: #e4edff;
   --primary-contrast: #ffffff;
-  --voice: #38bdf8;
+  --voice: #0ea5e9;
   --voice-deep: #0369a1;
-  --ring: #0e7c86;
-  --shadow: 0 1px 2px rgb(10 39 54 / 0.05), 0 18px 40px -24px rgb(10 39 54 / 0.35);
+  --grad-a: #10b981;
+  --grad-b: #2563eb;
+  --orb-a: #34d399;
+  --orb-b: #0ea5e9;
+  --eyebrow: #2563eb;
+  --navy: #10294f;
+  --band-bg: linear-gradient(105deg, #5b93fb 0%, #2f6bf0 52%, #1d4ed8 100%);
+  --band-heading: #0e2a54;
+  --band-eyebrow: #163e83;
+  --band-btn-bg: #0e2a54;
+  --band-btn-text: #ffffff;
+  --band-btn-hover: #163a72;
+  --ring: #2563eb;
+  --navlink: #1c3a7a;
+  --shadow: 0 1px 2px rgb(19 46 94 / 0.05), 0 24px 48px -30px rgb(19 46 94 / 0.35);
 
-  --st-urgent: #b91c1c;
-  --st-pending: #92400e;
+  --st-urgent: #dc2626;
+  --st-pending: #b45309;
   --st-progress: #1d4ed8;
-  --st-done: #166534;
-  --st-cancelled: #475569;
-  --st-spam: #3f4c59;
+  --st-done: #059669;
+  --st-cancelled: #64748b;
+  --st-spam: #64748b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --background: #071923;
-    --surface: #0d2431;
-    --surface-2: #12303f;
-    --border: #1d3d4f;
-    --text: #e8f1f5;
-    --text-muted: #9db2c0;
+    --background: #0a1524;
+    --surface: #0e2033;
+    --surface-2: #132842;
+    --border: #1d3252;
+    --text: #dde7f4;
+    --heading: #f2f6fc;
+    --text-muted: #8ea2bd;
     --primary: #2dd4bf;
-    --primary-strong: #7ee8db;
-    --primary-soft: #133a40;
-    --primary-contrast: #04241f;
+    --primary-strong: #5eead4;
+    --primary-soft: rgba(45, 212, 191, 0.12);
+    --primary-contrast: #05202b;
     --voice: #38bdf8;
     --voice-deep: #7dd3fc;
+    --grad-a: #34d399;
+    --grad-b: #38bdf8;
+    --orb-a: #34d399;
+    --orb-b: #0ea5e9;
+    --eyebrow: #2dd4bf;
+    --navy: #0d1f36;
+    --band-bg: linear-gradient(105deg, #123049 0%, #0e2438 60%, #0c1f33 100%);
+    --band-heading: #f2f6fc;
+    --band-eyebrow: #2dd4bf;
+    --band-btn-bg: #2dd4bf;
+    --band-btn-text: #05202b;
+    --band-btn-hover: #5eead4;
     --ring: #2dd4bf;
+    --navlink: #5eead4;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 24px 60px -34px rgb(0 0 0 / 0.9);
     --st-urgent: #fca5a5;
     --st-pending: #fcd34d;
     --st-progress: #93c5fd;
-    --st-done: #86efac;
-    --st-cancelled: #cbd5e1;
-    --st-spam: #cbd5e1;
+    --st-done: #34d399;
+    --st-cancelled: #94a3b8;
+    --st-spam: #94a3b8;
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #071923;
-  --surface: #0d2431;
-  --surface-2: #12303f;
-  --border: #1d3d4f;
-  --text: #e8f1f5;
-  --text-muted: #9db2c0;
+  --background: #0a1524;
+  --surface: #0e2033;
+  --surface-2: #132842;
+  --border: #1d3252;
+  --text: #dde7f4;
+  --heading: #f2f6fc;
+  --text-muted: #8ea2bd;
   --primary: #2dd4bf;
-  --primary-strong: #7ee8db;
-  --primary-soft: #133a40;
-  --primary-contrast: #04241f;
+  --primary-strong: #5eead4;
+  --primary-soft: rgba(45, 212, 191, 0.12);
+  --primary-contrast: #05202b;
   --voice: #38bdf8;
   --voice-deep: #7dd3fc;
+  --grad-a: #34d399;
+  --grad-b: #38bdf8;
+  --orb-a: #34d399;
+  --orb-b: #0ea5e9;
+  --eyebrow: #2dd4bf;
+  --navy: #0d1f36;
+  --band-bg: linear-gradient(105deg, #123049 0%, #0e2438 60%, #0c1f33 100%);
+  --band-heading: #f2f6fc;
+  --band-eyebrow: #2dd4bf;
+  --band-btn-bg: #2dd4bf;
+  --band-btn-text: #05202b;
+  --band-btn-hover: #5eead4;
   --ring: #2dd4bf;
+  --navlink: #5eead4;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 24px 60px -34px rgb(0 0 0 / 0.9);
   --st-urgent: #fca5a5;
   --st-pending: #fcd34d;
   --st-progress: #93c5fd;
-  --st-done: #86efac;
-  --st-cancelled: #cbd5e1;
-  --st-spam: #cbd5e1;
+  --st-done: #34d399;
+  --st-cancelled: #94a3b8;
+  --st-spam: #94a3b8;
 }
 
 @theme inline {
@@ -84,6 +128,7 @@
   --color-surface-2: var(--surface-2);
   --color-border: var(--border);
   --color-text: var(--text);
+  --color-heading: var(--heading);
   --color-muted: var(--text-muted);
   --color-primary: var(--primary);
   --color-primary-strong: var(--primary-strong);
@@ -91,6 +136,8 @@
   --color-primary-contrast: var(--primary-contrast);
   --color-voice: var(--voice);
   --color-voice-deep: var(--voice-deep);
+  --color-navy: var(--navy);
+  --color-navlink: var(--navlink);
   --color-st-urgent: var(--st-urgent);
   --color-st-pending: var(--st-pending);
   --color-st-progress: var(--st-progress);
@@ -99,6 +146,8 @@
   --color-st-spam: var(--st-spam);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif;
+  --font-display: var(--font-archivo), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetmono), ui-monospace, "Cascadia Mono", Consolas, monospace;
   --shadow-card: var(--shadow);
 }
 
@@ -115,7 +164,7 @@ body {
 }
 
 ::selection {
-  background: var(--primary-soft);
+  background: color-mix(in oklab, var(--grad-b) 22%, transparent);
   color: var(--text);
 }
 
@@ -129,11 +178,37 @@ body {
   text-wrap: balance;
 }
 
+/* ───────── Template type helpers ───────── */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--eyebrow);
+}
+
+.display-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--heading);
+}
+
+.text-grad {
+  background-image: linear-gradient(94deg, var(--grad-a) 0%, var(--grad-b) 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* ───────── Voice orb ─────────
    State is expressed by animation + label + color, never color alone. */
 .orb {
   position: relative;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   isolation: isolate;
 }
@@ -143,10 +218,10 @@ body {
   position: absolute;
   inset: 0;
   border-radius: 9999px;
-  border: 1px solid color-mix(in oklab, var(--voice) 35%, transparent);
+  border: 1px solid color-mix(in oklab, var(--orb-b) 38%, transparent);
   background: radial-gradient(
     circle at 50% 45%,
-    color-mix(in oklab, var(--voice) 22%, transparent),
+    color-mix(in oklab, var(--orb-b) 20%, transparent),
     transparent 68%
   );
   animation: orb-breathe 4.8s ease-in-out infinite;
@@ -166,9 +241,9 @@ body {
   gap: 4px;
   border-radius: 9999px;
   background:
-    radial-gradient(circle at 35% 25%, color-mix(in oklab, var(--voice) 55%, white), transparent 45%),
-    linear-gradient(145deg, var(--voice-deep), var(--primary-strong));
-  box-shadow: 0 18px 50px -18px color-mix(in oklab, var(--voice) 70%, transparent);
+    radial-gradient(circle at 33% 27%, color-mix(in oklab, var(--orb-a) 72%, white), transparent 52%),
+    linear-gradient(140deg, var(--orb-a) 10%, var(--orb-b) 85%);
+  box-shadow: 0 24px 70px -20px color-mix(in oklab, var(--orb-b) 70%, transparent);
   color: white;
 }
 
@@ -215,6 +290,58 @@ body {
   50% { transform: scale(1.06); opacity: 0.9; }
 }
 
+/* ───────── Waveform strip (demo) ───────── */
+.wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 22px;
+}
+.wave-bar {
+  width: 3px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--orb-b) 80%, var(--orb-a));
+  opacity: 0.55;
+  animation: wave-bar 1.3s ease-in-out infinite;
+}
+.wave[data-active="true"] .wave-bar {
+  opacity: 0.95;
+  animation-duration: 0.7s;
+}
+.wave-bar:nth-child(6n+1) { height: 30%; animation-delay: -0.9s; }
+.wave-bar:nth-child(6n+2) { height: 62%; animation-delay: -0.6s; }
+.wave-bar:nth-child(6n+3) { height: 90%; animation-delay: -0.3s; }
+.wave-bar:nth-child(6n+4) { height: 55%; animation-delay: -0.75s; }
+.wave-bar:nth-child(6n+5) { height: 38%; animation-delay: -0.45s; }
+.wave-bar:nth-child(6n)   { height: 70%; animation-delay: -0.2s; }
+
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1); }
+}
+
+/* ───────── Hero orb (plain gradient sphere, no bars) ───────── */
+.hero-orb {
+  display: block;
+  border-radius: 9999px;
+  background:
+    radial-gradient(circle at 30% 26%, color-mix(in oklab, var(--orb-a) 78%, white) 0%, transparent 34%),
+    linear-gradient(138deg, var(--orb-a) 4%, var(--orb-b) 88%);
+  box-shadow:
+    0 34px 100px -22px color-mix(in oklab, var(--orb-b) 85%, transparent),
+    inset 0 -14px 40px -18px color-mix(in oklab, var(--orb-b) 80%, transparent);
+}
+
+/* ───────── Floating hero pills ───────── */
+.float-pill {
+  animation: floaty 6s ease-in-out infinite;
+}
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
 .skeleton {
   position: relative;
   overflow: hidden;
@@ -255,4 +382,5 @@ body {
     scroll-behavior: auto !important;
   }
   .orb-halo, .orb-halo-2 { opacity: 0.5; }
+  .float-pill { transform: none; }
 }
