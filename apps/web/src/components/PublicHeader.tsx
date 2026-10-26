@@ -34,26 +34,24 @@ export async function PublicHeader({
       >
         {a11y("skip")}
       </a>
-      <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+      <div className="relative mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <Logo />
-        <div className="flex items-center gap-2 sm:gap-3">
-          {showNav && (
-            <nav aria-label={a11y("mainNav")} className="hidden items-center gap-6 md:flex">
-              {ANCHORS.map((anchor) => (
-                <Link key={anchor.href} href={anchor.href} className={LINK_CLASS}>
-                  {t(anchor.key)}
-                </Link>
-              ))}
-              <Link href="/demo" className={LINK_CLASS}>
-                {t("demo")}
+        {showNav && (
+          <nav
+            aria-label={a11y("mainNav")}
+            className="absolute left-1/2 hidden w-max -translate-x-1/2 items-center gap-6 lg:flex"
+          >
+            {ANCHORS.map((anchor) => (
+              <Link key={anchor.href} href={anchor.href} className={LINK_CLASS}>
+                {t(anchor.key)}
               </Link>
-              {showLogin && (
-                <Link href="/login" className={LINK_CLASS}>
-                  {t("login")}
-                </Link>
-              )}
-            </nav>
-          )}
+            ))}
+            <Link href="/demo" className={LINK_CLASS}>
+              {t("demo")}
+            </Link>
+          </nav>
+        )}
+        <div className="flex items-center gap-2 sm:gap-3">
           {dashboardCta && (
             <Link
               href="/painel"
@@ -63,10 +61,19 @@ export async function PublicHeader({
               {t("dashboardCta")}
             </Link>
           )}
-          <LocaleSwitcher />
+          {showLogin ? (
+            <>
+              <LocaleSwitcher />
+              <Link href="/login" className={LINK_CLASS}>
+                {t("login")}
+              </Link>
+            </>
+          ) : (
+            <LocaleSwitcher />
+          )}
           <ThemeToggle />
           {showNav && (
-            <details className="relative md:hidden">
+            <details className="relative lg:hidden">
               <summary
                 aria-label={t("openMenu")}
                 className="grid size-8 cursor-pointer list-none place-items-center rounded-full text-muted transition-colors hover:bg-primary/10 hover:text-primary-strong"
