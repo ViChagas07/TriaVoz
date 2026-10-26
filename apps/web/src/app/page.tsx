@@ -274,45 +274,54 @@ export default async function Landing() {
               {t("archTitle")}
             </h2>
             <div className="mt-10 rounded-3xl border border-border bg-surface p-6 sm:p-10">
-              <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
-                {archNodes.map((node, index) => (
-                  <div key={node.name} className="flex flex-1 flex-col items-center lg:flex-row">
-                    {index > 0 && (
-                      <ArrowRight
-                        aria-hidden
-                        className="mb-2 size-4 shrink-0 rotate-90 text-muted lg:mb-0 lg:mr-3 lg:rotate-0"
-                      />
-                    )}
-                    <div
-                      className={`w-full flex-1 rounded-2xl border bg-surface px-4 py-4 text-center ${
-                        index % 2 === 0
-                          ? "border-[color-mix(in_oklab,var(--grad-a)_55%,transparent)]"
-                          : "border-[color-mix(in_oklab,var(--grad-b)_55%,transparent)]"
-                      }`}
-                    >
-                      <p className="text-sm font-bold text-heading">{node.name}</p>
-                      <p className="mt-0.5 font-mono text-[0.62rem] text-muted">{node.sub}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-6 flex flex-col items-center gap-1">
+              <div className="relative flex flex-col items-stretch gap-5 lg:flex-row lg:items-center">
                 <svg
-                  viewBox="0 0 200 24"
-                  className="h-6 w-44 text-muted"
+                  aria-hidden
                   fill="none"
-                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-1/2 hidden h-1.5 w-full -translate-y-1/2 text-muted lg:block"
                 >
-                  <path
-                    d="M10 2 C 60 22, 140 22, 190 2"
+                  <line
+                    x1="0"
+                    y1="50%"
+                    x2="100%"
+                    y2="50%"
                     stroke="currentColor"
                     strokeWidth="1.5"
                     strokeDasharray="4 5"
                     strokeLinecap="round"
                   />
                 </svg>
-                <p className="font-mono text-[0.65rem] text-muted">{t("archDash")}</p>
+                <svg
+                  aria-hidden
+                  fill="none"
+                  className="pointer-events-none absolute inset-y-0 left-1/2 block h-full w-1.5 -translate-x-1/2 text-muted lg:hidden"
+                >
+                  <line
+                    x1="50%"
+                    y1="0"
+                    x2="50%"
+                    y2="100%"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeDasharray="4 5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                {archNodes.map((node, index) => (
+                  <div
+                    key={node.name}
+                    className={`relative w-full flex-1 rounded-2xl border bg-surface px-4 py-4 text-center ${
+                      index % 2 === 0
+                        ? "border-[color-mix(in_oklab,var(--grad-a)_55%,transparent)]"
+                        : "border-[color-mix(in_oklab,var(--grad-b)_55%,transparent)]"
+                    }`}
+                  >
+                    <p className="text-sm font-bold text-heading">{node.name}</p>
+                    <p className="mt-0.5 font-mono text-[0.62rem] text-muted">{node.sub}</p>
+                  </div>
+                ))}
               </div>
+              <p className="mt-5 text-center font-mono text-[0.65rem] text-muted">{t("archDash")}</p>
             </div>
           </section>
 

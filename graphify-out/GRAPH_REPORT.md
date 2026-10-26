@@ -1,7 +1,7 @@
-# Graph Report - Triavoz  (2026-10-24)
+# Graph Report - Triavoz  (2026-10-26)
 
 ## Corpus Check
-- 266 files · ~248,450 words
+- 266 files · ~248,460 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 19 file(s) not represented in the graph (top: (none) 14, .example 2, .ini 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `7281ea7c`
+- Built from commit: `f6aa70ff`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -551,7 +551,7 @@ Nodes (3): _FakeLiveKitApi, _FakeRoomApi, test_livekit_adapter_creates_the_room_
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `ScopedMessages()` connect `next-intl` to `DemoStage.tsx`, `types.ts`, `agendamentos/page.tsx`, `next`, `0009 — Locale strategy: cookie + `?lang`, not path prefixes`, `05 — Frontend UX (v2, nine lean routes)`, `painel/page.tsx`?**
-  _High betweenness centrality (0.165) - this node is a cross-community bridge._
+  _High betweenness centrality (0.162) - this node is a cross-community bridge._
 - **Are the 28 inferred relationships involving `StaffRepository` (e.g. with `StaffService` and `cancel_appointment()`) actually correct?**
   _`StaffRepository` has 28 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `triavoz-agent`, `triavoz-api`, `@livekit/components-react` to the rest of the system?**
@@ -559,7 +559,7 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `SchedulingRepository` be split into smaller, more focused modules?**
   _Cohesion score 0.08205128205128205 - nodes in this community are weakly interconnected._
 - **Why does `i18n` connect `05 — Frontend UX (v2, nine lean routes)` to `next-intl`?**
-  _High betweenness centrality (0.165) - this node is a cross-community bridge._
+  _High betweenness centrality (0.161) - this node is a cross-community bridge._
 - **Are the 40 inferred relationships involving `Principal` (e.g. with `AccessTokenIssuer` and `AuthService`) actually correct?**
   _`Principal` has 40 INFERRED edges - model-reasoned connections that need verification._
 - **Should `package.json` be split into smaller, more focused modules?**
